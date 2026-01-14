@@ -25,6 +25,8 @@ public class VoxelGameWindow : GameWindow
     private WorldGenerator worldGenerator;
     private ImGuiController? imguiController;
     private TickSystem tickSystem;
+    private DayNightCycle dayNightCycle;
+    private float gameTime = 0.0f;
 
     // Game mode
     private PlayerController? player;
@@ -69,8 +71,16 @@ public class VoxelGameWindow : GameWindow
         GL.Enable(EnableCap.CullFace);
         GL.CullFace(CullFaceMode.Back);
 
+        // Enable blending for transparent water
+        GL.Enable(EnableCap.Blend);
+        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+
         // Initialize tick system
         tickSystem = new TickSystem();
+
+        // Initialize day/night cycle
+        dayNightCycle = new DayNightCycle();
+        dayNightCycle.SetToDawn(); // Start at dawn
 
         // Initialize world
         world = new VoxelWorld(new Vector3Int(8, 4, 8));
@@ -191,8 +201,18 @@ public class VoxelGameWindow : GameWindow
 
         float deltaTime = (float)args.Time;
 
+        // Update game time
+        gameTime += deltaTime;
+
         // Update tick system
         tickSystem.Update(deltaTime);
+
+        // Update day/night cycle
+        dayNightCycle.Update(deltaTime);
+
+        // Update clear color based on time of day
+        Vector3 skyColor = dayNightCycle.GetSkyColor();
+        GL.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
 
         if (isEditorMode)
         {
@@ -393,10 +413,13 @@ public class VoxelGameWindow : GameWindow
 
         voxelShader.SetMatrix4("view", view);
         voxelShader.SetMatrix4("projection", projection);
-        voxelShader.SetVector3("lightDir", new Vector3(-0.3f, -1.0f, -0.5f));
+        voxelShader.SetVector3("sunDirection", dayNightCycle.GetSunDirection());
+        voxelShader.SetVector3("moonDirection", dayNightCycle.GetMoonDirection());
         voxelShader.SetVector3("viewPos", viewPos);
-        voxelShader.SetVector3("fogColor", new Vector3(0.53f, 0.81f, 0.92f));
+        voxelShader.SetVector3("fogColor", dayNightCycle.GetSkyColor());
         voxelShader.SetFloat("fogDensity", 0.0008f);
+        voxelShader.SetFloat("dayNightCycle", dayNightCycle.CurrentTime);
+        voxelShader.SetFloat("time", gameTime);
 
         foreach (var chunk in world.GetAllChunks())
         {
@@ -444,6 +467,31 @@ public class VoxelGameWindow : GameWindow
             var config = worldGenerator.GetConfig();
             ImGui.Text($"Seed: {config.Seed}");
             ImGui.Text($"Water Level: {config.WaterLevel}");
+        }
+
+        // Day/Night Cycle
+        if (ImGui.CollapsingHeader("Day/Night Cycle"))
+        {
+            ImGui.Text($"Time of Day: {dayNightCycle.GetTimeOfDay()}");
+            ImGui.Text($"Cycle: {dayNightCycle.CurrentTime:F2}");
+
+            if (ImGui.Button("Set to Dawn"))
+                dayNightCycle.SetToDawn();
+            ImGui.SameLine();
+            if (ImGui.Button("Set to Noon"))
+                dayNightCycle.SetToNoon();
+
+            if (ImGui.Button("Set to Dusk"))
+                dayNightCycle.SetToDusk();
+            ImGui.SameLine();
+            if (ImGui.Button("Set to Night"))
+                dayNightCycle.SetToMidnight();
+
+            float dayLength = dayNightCycle.DayLength;
+            if (ImGui.SliderFloat("Day Length (s)", ref dayLength, 10.0f, 600.0f))
+            {
+                dayNightCycle.DayLength = dayLength;
+            }
         }
 
         // Play/Edit mode toggle
@@ -642,23 +690,23 @@ public class VoxelGameWindow : GameWindow
 
     private void RebuildChunkAt(Vector3Int worldPos)
     {
-        Vector3Int chunkPos = new Vector3Int(
-            worldPos.X / Chunk.ChunkSize,
-            worldPos.Y / Chunk.ChunkSize,
-            worldPos.Z / Chunk.ChunkSize
-        );
+        // Get all affected chunks (including neighbors if on edge)
+        var affectedChunks = world.GetAffectedChunks(worldPos);
 
-        if (chunkMeshes.TryGetValue(chunkPos, out var mesh))
+        foreach (var chunkPos in affectedChunks)
         {
-            mesh.Dispose();
-        }
+            if (chunkMeshes.TryGetValue(chunkPos, out var mesh))
+            {
+                mesh.Dispose();
+            }
 
-        var chunk = world.GetChunk(chunkPos);
-        if (chunk != null)
-        {
-            var newMesh = new VoxelMesh();
-            newMesh.BuildMesh(chunk, world);
-            chunkMeshes[chunkPos] = newMesh;
+            var chunk = world.GetChunk(chunkPos);
+            if (chunk != null)
+            {
+                var newMesh = new VoxelMesh();
+                newMesh.BuildMesh(chunk, world);
+                chunkMeshes[chunkPos] = newMesh;
+            }
         }
     }
 

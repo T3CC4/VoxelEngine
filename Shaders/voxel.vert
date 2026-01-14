@@ -4,11 +4,13 @@ layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aColor;
 layout(location = 2) in vec3 aNormal;
 layout(location = 3) in float aAmbientOcclusion;
+layout(location = 4) in int aIsWater;
 
 out vec3 fragColor;
 out vec3 fragNormal;
 out vec3 fragPosition;
 out float ambientOcclusion;
+flat out int isWater;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -20,6 +22,7 @@ void main()
     fragNormal = mat3(transpose(inverse(model))) * aNormal;
     fragColor = aColor;
     ambientOcclusion = aAmbientOcclusion;
+    isWater = aIsWater;
 
     gl_Position = projection * view * model * vec4(aPosition, 1.0);
 }
