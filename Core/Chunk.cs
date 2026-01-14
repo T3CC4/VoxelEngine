@@ -2,7 +2,7 @@ namespace VoxelEngine.Core;
 
 public class Chunk
 {
-    public const int ChunkSize = 16;
+    public const int ChunkSize = 32;
     public Vector3Int Position { get; }
     private readonly Voxel[,,] voxels;
 
