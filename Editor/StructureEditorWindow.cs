@@ -1,4 +1,4 @@
-using OpenTK.Graphics.OpenGL4;
+﻿using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
@@ -92,27 +92,32 @@ void main()
     FragColor = color;
 }";
 
+        // Compile vertex shader
         int vertexShader = GL.CreateShader(ShaderType.VertexShader);
         GL.ShaderSource(vertexShader, vertexSource);
         GL.CompileShader(vertexShader);
 
+        // Compile fragment shader
         int fragmentShader = GL.CreateShader(ShaderType.FragmentShader);
         GL.ShaderSource(fragmentShader, fragmentSource);
         GL.CompileShader(fragmentShader);
 
+        // Link program
         int program = GL.CreateProgram();
         GL.AttachShader(program, vertexShader);
         GL.AttachShader(program, fragmentShader);
         GL.LinkProgram(program);
 
+        // Cleanup shader objects
         GL.DetachShader(program, vertexShader);
         GL.DetachShader(program, fragmentShader);
         GL.DeleteShader(vertexShader);
         GL.DeleteShader(fragmentShader);
 
-        gridShader = new Shader("Shaders/voxel.vert", "Shaders/voxel.frag");
-        gridShader.Handle = program;
+        // ✅ Correct usage: wrap program in Shader
+        gridShader = new Shader(program);
     }
+
 
     private void CreateGrid()
     {

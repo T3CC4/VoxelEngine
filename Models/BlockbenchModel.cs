@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using OpenTK.Mathematics;
 using VoxelEngine.Core;
+using VoxelEngine.Structures;
 
 namespace VoxelEngine.Models;
 
