@@ -127,17 +127,17 @@ public class VoxelMesh : IDisposable
         {
             0 => new[] // Top
             {
-                new Vector3(0, 1, 0),
-                new Vector3(1, 1, 0),
+                new Vector3(0, 1, 1),
                 new Vector3(1, 1, 1),
-                new Vector3(0, 1, 1)
+                new Vector3(1, 1, 0),
+                new Vector3(0, 1, 0)
             },
             1 => new[] // Bottom
             {
-                new Vector3(0, 0, 1),
-                new Vector3(1, 0, 1),
+                new Vector3(0, 0, 0),
                 new Vector3(1, 0, 0),
-                new Vector3(0, 0, 0)
+                new Vector3(1, 0, 1),
+                new Vector3(0, 0, 1)
             },
             2 => new[] // Front
             {

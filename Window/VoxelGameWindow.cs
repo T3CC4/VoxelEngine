@@ -8,6 +8,7 @@ using VoxelEngine.Editor;
 using VoxelEngine.Game;
 using VoxelEngine.Graphics;
 using VoxelEngine.Structures;
+using VoxelEngine.World;
 using ImGuiNET;
 
 namespace VoxelEngine.Window;
@@ -16,14 +17,18 @@ public class VoxelGameWindow : GameWindow
 {
     private readonly bool isEditorMode;
     private VoxelWorld world;
-    private Camera camera;
+    private ThirdPersonCamera? thirdPersonCamera;
+    private Camera? editorCamera;
     private Shader? voxelShader;
     private Dictionary<Vector3Int, VoxelMesh> chunkMeshes = new();
     private StructureManager structureManager;
+    private WorldGenerator worldGenerator;
     private ImGuiController? imguiController;
+    private TickSystem tickSystem;
 
     // Game mode
     private PlayerController? player;
+    private Vector3 playerPosition = Vector3.Zero;
 
     // Editor mode
     private Vector3Int editorCursorPos = Vector3Int.Zero;
@@ -32,6 +37,7 @@ public class VoxelGameWindow : GameWindow
     private Structure? currentStructure = null;
     private StructureCategory selectedCategory = StructureCategory.Architecture;
     private int selectedStructureIndex = 0;
+    private bool showWorldGenUI = false;
 
     // Input
     private bool firstMove = true;
@@ -42,7 +48,7 @@ public class VoxelGameWindow : GameWindow
         : base(GameWindowSettings.Default, new NativeWindowSettings()
         {
             Size = new Vector2i(1600, 900),
-            Title = editorMode ? "VoxelEngine - Editor Mode" : "VoxelEngine - Game Mode",
+            Title = editorMode ? "VoxelEngine - Editor Mode" : "VoxelEngine - RPG Mode",
             StartVisible = true,
             WindowBorder = WindowBorder.Resizable,
             API = ContextAPI.OpenGL,
@@ -58,20 +64,26 @@ public class VoxelGameWindow : GameWindow
     {
         base.OnLoad();
 
-        GL.ClearColor(0.53f, 0.81f, 0.92f, 1.0f); // Sky blue
+        GL.ClearColor(0.53f, 0.81f, 0.92f, 1.0f);
         GL.Enable(EnableCap.DepthTest);
         GL.Enable(EnableCap.CullFace);
         GL.CullFace(CullFaceMode.Back);
 
+        // Initialize tick system
+        tickSystem = new TickSystem();
+
         // Initialize world
-        world = new VoxelWorld(new Vector3Int(4, 2, 4));
-        world.GenerateTestTerrain();
+        world = new VoxelWorld(new Vector3Int(8, 4, 8));
+
+        // Initialize world generator
+        worldGenerator = new WorldGenerator();
+        worldGenerator.GenerateTerrain(world);
 
         // Initialize structure manager
         structureManager = new StructureManager();
 
-        // Initialize camera
-        camera = new Camera(new Vector3(16, 20, 16), Size.X / (float)Size.Y);
+        // Place structures throughout world
+        PlaceStructuresThroughoutWorld();
 
         // Load shaders
         voxelShader = new Shader("Shaders/voxel.vert", "Shaders/voxel.frag");
@@ -80,14 +92,23 @@ public class VoxelGameWindow : GameWindow
         if (isEditorMode)
         {
             imguiController = new ImGuiController(this);
-            camera.Position = new Vector3(16, 25, 35);
-            camera.Pitch = -30;
+            editorCamera = new Camera(new Vector3(64, 40, 64), Size.X / (float)Size.Y);
+            editorCamera.Pitch = -30;
         }
         else
         {
-            // Game mode - setup player
-            Vector3 spawnPos = new Vector3(16, 10, 16);
-            player = new PlayerController(spawnPos, camera, world);
+            // Game mode - setup third person camera and player
+            playerPosition = new Vector3(64, 30, 64);
+            thirdPersonCamera = new ThirdPersonCamera(playerPosition, Size.X / (float)Size.Y);
+
+            // Find suitable spawn position
+            FindSpawnPosition();
+
+            if (editorCamera == null)
+            {
+                editorCamera = new Camera(playerPosition, Size.X / (float)Size.Y);
+            }
+            player = new PlayerController(playerPosition, editorCamera, world);
             CaptureMouse();
         }
 
@@ -95,11 +116,83 @@ public class VoxelGameWindow : GameWindow
         RebuildAllMeshes();
     }
 
+    private void FindSpawnPosition()
+    {
+        // Find a solid ground position
+        for (int y = world.WorldSize.Y * Chunk.ChunkSize - 1; y >= 0; y--)
+        {
+            var voxel = world.GetVoxel(new Vector3Int((int)playerPosition.X, y, (int)playerPosition.Z));
+            if (voxel.IsActive && voxel.Type.IsSolid())
+            {
+                playerPosition = new Vector3(playerPosition.X, y + 2, playerPosition.Z);
+                if (thirdPersonCamera != null)
+                    thirdPersonCamera.TargetPosition = playerPosition;
+                break;
+            }
+        }
+    }
+
+    private void PlaceStructuresThroughoutWorld()
+    {
+        Random rand = new Random(worldGenerator.GetConfig().Seed);
+        int worldWidth = world.WorldSize.X * Chunk.ChunkSize;
+        int worldDepth = world.WorldSize.Z * Chunk.ChunkSize;
+
+        // Place trees
+        var trees = structureManager.AmbientStructures.Where(s => s.Name.Contains("Tree")).ToList();
+        if (trees.Any())
+        {
+            for (int i = 0; i < 50; i++)
+            {
+                int x = rand.Next(5, worldWidth - 5);
+                int z = rand.Next(5, worldDepth - 5);
+
+                // Find ground level
+                for (int y = world.WorldSize.Y * Chunk.ChunkSize - 1; y >= 0; y--)
+                {
+                    var voxel = world.GetVoxel(new Vector3Int(x, y, z));
+                    if (voxel.Type == VoxelType.Grass)
+                    {
+                        var tree = trees[rand.Next(trees.Count)];
+                        tree.PlaceInWorld(world, new Vector3Int(x, y + 1, z));
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Place houses
+        var houses = structureManager.ArchitectureStructures;
+        if (houses.Any())
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                int x = rand.Next(10, worldWidth - 10);
+                int z = rand.Next(10, worldDepth - 10);
+
+                // Find ground level
+                for (int y = world.WorldSize.Y * Chunk.ChunkSize - 1; y >= 0; y--)
+                {
+                    var voxel = world.GetVoxel(new Vector3Int(x, y, z));
+                    if (voxel.Type == VoxelType.Grass)
+                    {
+                        var house = houses[rand.Next(houses.Count)];
+                        house.PlaceInWorld(world, new Vector3Int(x, y + 1, z));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     protected override void OnUpdateFrame(FrameEventArgs args)
     {
         base.OnUpdateFrame(args);
 
         float deltaTime = (float)args.Time;
+
+        // Update tick system
+        tickSystem.Update(deltaTime);
 
         if (isEditorMode)
         {
@@ -109,6 +202,17 @@ public class VoxelGameWindow : GameWindow
         {
             UpdateGame(deltaTime);
         }
+
+        // Hot reload worldgen in editor
+        if (isEditorMode && KeyboardState.IsKeyPressed(Keys.F5))
+        {
+            Console.WriteLine("Hot reloading worldgen...");
+            worldGenerator.LoadConfig();
+            world = new VoxelWorld(world.WorldSize);
+            worldGenerator.GenerateTerrain(world);
+            PlaceStructuresThroughoutWorld();
+            RebuildAllMeshes();
+        }
     }
 
     private void UpdateEditor(float deltaTime)
@@ -116,17 +220,14 @@ public class VoxelGameWindow : GameWindow
         var keyboard = KeyboardState;
         var io = ImGui.GetIO();
 
-        // Update ImGui
         imguiController?.Update(deltaTime);
 
-        // Don't process game input if ImGui wants input
         if (io.WantCaptureMouse || io.WantCaptureKeyboard)
         {
             if (mouseCaptured) ReleaseMouse();
             return;
         }
 
-        // Toggle mouse capture with right click
         if (MouseState.IsButtonPressed(MouseButton.Right) && !mouseCaptured)
         {
             CaptureMouse();
@@ -136,26 +237,27 @@ public class VoxelGameWindow : GameWindow
             ReleaseMouse();
         }
 
-        // Camera movement (only when mouse captured or playing)
         if (mouseCaptured || isPlaying)
         {
             float speed = keyboard.IsKeyDown(Keys.LeftShift) ? 15.0f : 7.0f;
 
-            if (keyboard.IsKeyDown(Keys.W))
-                camera.ProcessKeyboard(CameraMovement.Forward, deltaTime, speed);
-            if (keyboard.IsKeyDown(Keys.S))
-                camera.ProcessKeyboard(CameraMovement.Backward, deltaTime, speed);
-            if (keyboard.IsKeyDown(Keys.A))
-                camera.ProcessKeyboard(CameraMovement.Left, deltaTime, speed);
-            if (keyboard.IsKeyDown(Keys.D))
-                camera.ProcessKeyboard(CameraMovement.Right, deltaTime, speed);
-            if (keyboard.IsKeyDown(Keys.Space))
-                camera.ProcessKeyboard(CameraMovement.Up, deltaTime, speed);
-            if (keyboard.IsKeyDown(Keys.LeftControl))
-                camera.ProcessKeyboard(CameraMovement.Down, deltaTime, speed);
+            if (editorCamera != null)
+            {
+                if (keyboard.IsKeyDown(Keys.W))
+                    editorCamera.ProcessKeyboard(CameraMovement.Forward, deltaTime, speed);
+                if (keyboard.IsKeyDown(Keys.S))
+                    editorCamera.ProcessKeyboard(CameraMovement.Backward, deltaTime, speed);
+                if (keyboard.IsKeyDown(Keys.A))
+                    editorCamera.ProcessKeyboard(CameraMovement.Left, deltaTime, speed);
+                if (keyboard.IsKeyDown(Keys.D))
+                    editorCamera.ProcessKeyboard(CameraMovement.Right, deltaTime, speed);
+                if (keyboard.IsKeyDown(Keys.Space))
+                    editorCamera.ProcessKeyboard(CameraMovement.Up, deltaTime, speed);
+                if (keyboard.IsKeyDown(Keys.LeftControl))
+                    editorCamera.ProcessKeyboard(CameraMovement.Down, deltaTime, speed);
+            }
         }
 
-        // Voxel placement/removal (only in edit mode, not playing)
         if (!isPlaying && mouseCaptured)
         {
             if (MouseState.IsButtonPressed(MouseButton.Left))
@@ -199,6 +301,12 @@ public class VoxelGameWindow : GameWindow
         }
 
         player?.Update(deltaTime);
+
+        // Update camera to follow player
+        if (player != null && thirdPersonCamera != null)
+        {
+            thirdPersonCamera.TargetPosition = player.Position + Vector3.UnitY * 0.9f;
+        }
     }
 
     protected override void OnMouseMove(MouseMoveEventArgs e)
@@ -217,10 +325,27 @@ public class VoxelGameWindow : GameWindow
             float deltaX = e.X - lastMousePos.X;
             float deltaY = e.Y - lastMousePos.Y;
 
-            camera.ProcessMouseMovement(deltaX, deltaY);
+            if (isEditorMode)
+            {
+                editorCamera?.ProcessMouseMovement(deltaX, deltaY);
+            }
+            else
+            {
+                thirdPersonCamera?.ProcessMouseMovement(deltaX, deltaY);
+            }
         }
 
         lastMousePos = new Vector2(e.X, e.Y);
+    }
+
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+
+        if (!isEditorMode && thirdPersonCamera != null)
+        {
+            thirdPersonCamera.ProcessMouseScroll(e.OffsetY);
+        }
     }
 
     protected override void OnRenderFrame(FrameEventArgs args)
@@ -229,10 +354,8 @@ public class VoxelGameWindow : GameWindow
 
         GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        // Render world
         RenderWorld();
 
-        // Render UI
         if (isEditorMode)
         {
             RenderEditorUI();
@@ -248,15 +371,32 @@ public class VoxelGameWindow : GameWindow
 
         voxelShader.Use();
 
-        Matrix4 view = camera.GetViewMatrix();
-        Matrix4 projection = camera.GetProjectionMatrix();
+        Matrix4 view, projection;
+        Vector3 viewPos;
+
+        if (isEditorMode && editorCamera != null)
+        {
+            view = editorCamera.GetViewMatrix();
+            projection = editorCamera.GetProjectionMatrix();
+            viewPos = editorCamera.Position;
+        }
+        else if (thirdPersonCamera != null)
+        {
+            view = thirdPersonCamera.GetViewMatrix();
+            projection = thirdPersonCamera.GetProjectionMatrix();
+            viewPos = thirdPersonCamera.Position;
+        }
+        else
+        {
+            return;
+        }
 
         voxelShader.SetMatrix4("view", view);
         voxelShader.SetMatrix4("projection", projection);
         voxelShader.SetVector3("lightDir", new Vector3(-0.3f, -1.0f, -0.5f));
-        voxelShader.SetVector3("viewPos", camera.Position);
+        voxelShader.SetVector3("viewPos", viewPos);
         voxelShader.SetVector3("fogColor", new Vector3(0.53f, 0.81f, 0.92f));
-        voxelShader.SetFloat("fogDensity", 0.0015f);
+        voxelShader.SetFloat("fogDensity", 0.0008f);
 
         foreach (var chunk in world.GetAllChunks())
         {
@@ -277,11 +417,34 @@ public class VoxelGameWindow : GameWindow
 
     private void RenderEditorUI()
     {
+        if (editorCamera == null) return;
+
         ImGui.Begin("VoxelEngine Editor", ImGuiWindowFlags.AlwaysAutoResize);
 
         ImGui.Text($"FPS: {1.0 / ImGui.GetIO().DeltaTime:F0}");
-        ImGui.Text($"Camera: {camera.Position:F1}");
+        ImGui.Text($"Tick: {tickSystem.CurrentTick} ({tickSystem.TickRate} TPS)");
+        ImGui.Text($"Camera: {editorCamera.Position:F1}");
+        ImGui.Text($"Chunks: {chunkMeshes.Count}");
         ImGui.Separator();
+
+        // World generation
+        if (ImGui.CollapsingHeader("World Generation"))
+        {
+            ImGui.Text("Press F5 to hot reload worldgen");
+
+            if (ImGui.Button("Edit Worldgen Config"))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "worldgen_config.json",
+                    UseShellExecute = true
+                });
+            }
+
+            var config = worldGenerator.GetConfig();
+            ImGui.Text($"Seed: {config.Seed}");
+            ImGui.Text($"Water Level: {config.WaterLevel}");
+        }
 
         // Play/Edit mode toggle
         if (isPlaying)
@@ -290,7 +453,7 @@ public class VoxelGameWindow : GameWindow
             {
                 isPlaying = false;
             }
-            ImGui.Text("Play Mode Active - Test your structures!");
+            ImGui.Text("Play Mode Active");
         }
         else
         {
@@ -299,7 +462,7 @@ public class VoxelGameWindow : GameWindow
                 isPlaying = true;
                 if (player == null)
                 {
-                    player = new PlayerController(camera.Position, camera, world);
+                    player = new PlayerController(editorCamera.Position, editorCamera, world);
                 }
                 CaptureMouse();
             }
@@ -307,7 +470,6 @@ public class VoxelGameWindow : GameWindow
             ImGui.Separator();
             ImGui.Text("Voxel Painting");
 
-            // Voxel type selector
             string[] voxelNames = Enum.GetNames(typeof(VoxelType));
             int currentType = (int)selectedVoxelType;
             if (ImGui.Combo("Voxel Type", ref currentType, voxelNames, voxelNames.Length))
@@ -318,7 +480,6 @@ public class VoxelGameWindow : GameWindow
             ImGui.Separator();
             ImGui.Text("Structures");
 
-            // Category selector
             string[] categories = { "Architecture", "Ambient" };
             int categoryIndex = (int)selectedCategory;
             if (ImGui.Combo("Category", ref categoryIndex, categories, categories.Length))
@@ -327,7 +488,6 @@ public class VoxelGameWindow : GameWindow
                 selectedStructureIndex = 0;
             }
 
-            // Structure list
             var structures = selectedCategory == StructureCategory.Architecture
                 ? structureManager.ArchitectureStructures
                 : structureManager.AmbientStructures;
@@ -335,9 +495,9 @@ public class VoxelGameWindow : GameWindow
             if (structures.Count > 0)
             {
                 string[] structureNames = structures.Select(s => s.Name).ToArray();
-                ImGui.ListBox("Available Structures", ref selectedStructureIndex, structureNames, structureNames.Length, 5);
+                ImGui.ListBox("Available", ref selectedStructureIndex, structureNames, structureNames.Length, 5);
 
-                if (ImGui.Button("Place Selected Structure"))
+                if (ImGui.Button("Place Structure"))
                 {
                     if (selectedStructureIndex >= 0 && selectedStructureIndex < structures.Count)
                     {
@@ -347,49 +507,37 @@ public class VoxelGameWindow : GameWindow
                     }
                 }
             }
-            else
-            {
-                ImGui.Text("No structures in this category");
-            }
 
-            // New structure
-            ImGui.Separator();
-            if (ImGui.Button("Create New Structure"))
+            if (ImGui.Button("Open Structure Editor"))
             {
-                currentStructure = new Structure($"New{selectedCategory}", selectedCategory);
-            }
-
-            if (currentStructure != null)
-            {
-                ImGui.Text($"Editing: {currentStructure.Name}");
-                if (ImGui.Button("Save Structure"))
-                {
-                    structureManager.SaveStructure(currentStructure);
-                    currentStructure = null;
-                }
-                ImGui.SameLine();
-                if (ImGui.Button("Cancel"))
-                {
-                    currentStructure = null;
-                }
+                // Launch structure editor in new process
+                LaunchStructureEditor();
             }
         }
 
         ImGui.Separator();
         ImGui.Text("Controls:");
-        ImGui.BulletText("Right Click: Capture mouse for camera");
-        ImGui.BulletText("WASD: Move camera");
+        ImGui.BulletText("Right Click: Capture mouse");
+        ImGui.BulletText("WASD: Move");
         ImGui.BulletText("Space/Ctrl: Up/Down");
         ImGui.BulletText("Left Click: Place voxel");
         ImGui.BulletText("Middle Click: Remove voxel");
+        ImGui.BulletText("F5: Reload worldgen");
         ImGui.BulletText("ESC: Release mouse");
 
         ImGui.End();
     }
 
+    private void LaunchStructureEditor()
+    {
+        // For now, just print a message
+        // In a full implementation, you'd launch a new window
+        Console.WriteLine("Structure Editor would launch here");
+        // Could spawn new window: new StructureEditorWindow().Run();
+    }
+
     private void PlaceVoxel()
     {
-        // Raycast to find placement position
         var hitPos = GetVoxelLookingAt(out bool hit, out var normal);
         if (hit)
         {
@@ -423,9 +571,26 @@ public class VoxelGameWindow : GameWindow
 
     private Vector3Int GetVoxelLookingAt(out bool hit, out Vector3Int normal)
     {
-        // Simple raycast
-        Vector3 rayStart = camera.Position;
-        Vector3 rayDir = camera.Front;
+        Vector3 rayStart;
+        Vector3 rayDir;
+
+        if (isEditorMode && editorCamera != null)
+        {
+            rayStart = editorCamera.Position;
+            rayDir = editorCamera.Front;
+        }
+        else if (thirdPersonCamera != null)
+        {
+            rayStart = thirdPersonCamera.Position;
+            rayDir = thirdPersonCamera.Front;
+        }
+        else
+        {
+            hit = false;
+            normal = Vector3Int.Zero;
+            return Vector3Int.Zero;
+        }
+
         float maxDistance = 10.0f;
         float step = 0.1f;
 
@@ -441,7 +606,6 @@ public class VoxelGameWindow : GameWindow
             var voxel = world.GetVoxel(voxelPos);
             if (voxel.IsActive && voxel.Type != VoxelType.Air)
             {
-                // Determine hit normal
                 Vector3 prevPos = rayStart + rayDir * (dist - step);
                 Vector3Int prevVoxel = new Vector3Int(
                     (int)MathF.Floor(prevPos.X),
@@ -514,7 +678,11 @@ public class VoxelGameWindow : GameWindow
     {
         base.OnResize(e);
         GL.Viewport(0, 0, e.Width, e.Height);
-        camera.AspectRatio = e.Width / (float)e.Height;
+
+        if (editorCamera != null)
+            editorCamera.AspectRatio = e.Width / (float)e.Height;
+        if (thirdPersonCamera != null)
+            thirdPersonCamera.AspectRatio = e.Width / (float)e.Height;
     }
 
     protected override void OnUnload()
