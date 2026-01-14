@@ -39,7 +39,7 @@ public class VoxelMesh : IDisposable
                         // Only render face if neighbor is empty or transparent
                         if (!neighbor.IsActive || neighbor.Type == VoxelType.Water)
                         {
-                            AddFace(vertices, indices, ref currentIndex, x, y, z, face, color);
+                            AddFace(vertices, indices, ref currentIndex, x, y, z, face, color, voxel.Type);
                         }
                     }
                 }
@@ -51,13 +51,14 @@ public class VoxelMesh : IDisposable
     }
 
     private void AddFace(List<float> vertices, List<uint> indices, ref uint currentIndex,
-        int x, int y, int z, int face, Vector3 color)
+        int x, int y, int z, int face, Vector3 color, VoxelType voxelType)
     {
         Vector3 position = new Vector3(x, y, z);
         Vector3 normal = GetFaceNormal(face);
         Vector3[] faceVertices = GetFaceVertices(face);
 
         float ao = 1.0f; // Ambient occlusion (simplified for now)
+        int isWater = (voxelType == VoxelType.Water) ? 1 : 0;
 
         for (int i = 0; i < 4; i++)
         {
@@ -80,6 +81,9 @@ public class VoxelMesh : IDisposable
 
             // Ambient Occlusion
             vertices.Add(ao);
+
+            // Is Water flag
+            vertices.Add(isWater);
         }
 
         // Indices for two triangles (quad)
@@ -190,21 +194,27 @@ public class VoxelMesh : IDisposable
         GL.BindBuffer(BufferTarget.ElementArrayBuffer, ebo);
         GL.BufferData(BufferTarget.ElementArrayBuffer, indices.Length * sizeof(uint), indices, BufferUsageHint.StaticDraw);
 
+        int stride = 11 * sizeof(float);
+
         // Position attribute
-        GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 10 * sizeof(float), 0);
+        GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, stride, 0);
         GL.EnableVertexAttribArray(0);
 
         // Color attribute
-        GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 10 * sizeof(float), 3 * sizeof(float));
+        GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, stride, 3 * sizeof(float));
         GL.EnableVertexAttribArray(1);
 
         // Normal attribute
-        GL.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, 10 * sizeof(float), 6 * sizeof(float));
+        GL.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, stride, 6 * sizeof(float));
         GL.EnableVertexAttribArray(2);
 
         // Ambient Occlusion attribute
-        GL.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, 10 * sizeof(float), 9 * sizeof(float));
+        GL.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, stride, 9 * sizeof(float));
         GL.EnableVertexAttribArray(3);
+
+        // IsWater attribute (as integer)
+        GL.VertexAttribIPointer(4, 1, VertexAttribIntegerType.Int, stride, (IntPtr)(10 * sizeof(float)));
+        GL.EnableVertexAttribArray(4);
 
         GL.BindVertexArray(0);
     }

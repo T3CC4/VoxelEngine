@@ -59,6 +59,35 @@ public class VoxelWorld
         chunk?.SetVoxelType(localPos.X, localPos.Y, localPos.Z, type);
     }
 
+    public List<Vector3Int> GetAffectedChunks(Vector3Int worldPosition)
+    {
+        var affected = new List<Vector3Int>();
+        var chunkPos = WorldToChunkPosition(worldPosition);
+        var localPos = WorldToLocalPosition(worldPosition);
+
+        // Always add the chunk containing this voxel
+        affected.Add(chunkPos);
+
+        // Check if voxel is on chunk boundaries and add neighboring chunks
+        if (localPos.X == 0)
+            affected.Add(chunkPos + new Vector3Int(-1, 0, 0));
+        else if (localPos.X == Chunk.ChunkSize - 1)
+            affected.Add(chunkPos + new Vector3Int(1, 0, 0));
+
+        if (localPos.Y == 0)
+            affected.Add(chunkPos + new Vector3Int(0, -1, 0));
+        else if (localPos.Y == Chunk.ChunkSize - 1)
+            affected.Add(chunkPos + new Vector3Int(0, 1, 0));
+
+        if (localPos.Z == 0)
+            affected.Add(chunkPos + new Vector3Int(0, 0, -1));
+        else if (localPos.Z == Chunk.ChunkSize - 1)
+            affected.Add(chunkPos + new Vector3Int(0, 0, 1));
+
+        // Remove chunks that don't exist
+        return affected.Where(pos => chunks.ContainsKey(pos)).ToList();
+    }
+
     private Vector3Int WorldToChunkPosition(Vector3Int worldPosition)
     {
         return new Vector3Int(
