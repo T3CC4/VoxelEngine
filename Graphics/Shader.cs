@@ -8,6 +8,9 @@ public class Shader : IDisposable
     public int Handle { get; private set; }
     private bool disposed = false;
 
+    // =====================================================
+    // FILE-BASED SHADER (voxel.vert / voxel.frag)
+    // =====================================================
     public Shader(string vertexPath, string fragmentPath)
     {
         // Load shader source
@@ -40,6 +43,17 @@ public class Shader : IDisposable
         GL.DeleteShader(fragmentShader);
     }
 
+    // =====================================================
+    // RUNTIME SHADER (grid, gizmos, editor helpers, etc.)
+    // =====================================================
+    public Shader(int existingProgram)
+    {
+        Handle = existingProgram;
+    }
+
+    // =====================================================
+    // USAGE
+    // =====================================================
     public void Use()
     {
         GL.UseProgram(Handle);
@@ -69,6 +83,9 @@ public class Shader : IDisposable
         GL.Uniform1(location, value);
     }
 
+    // =====================================================
+    // ERROR HANDLING (UNCHANGED)
+    // =====================================================
     private void CheckCompileErrors(int shader, string type)
     {
         if (type != "PROGRAM")
@@ -91,6 +108,9 @@ public class Shader : IDisposable
         }
     }
 
+    // =====================================================
+    // CLEANUP
+    // =====================================================
     public void Dispose()
     {
         if (!disposed)
