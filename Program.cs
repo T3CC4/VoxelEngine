@@ -1,3 +1,4 @@
+using VoxelEngine.Editor;
 using VoxelEngine.Window;
 
 class Program
@@ -13,6 +14,13 @@ class Program
         try
         {
             ShowWelcomeScreen();
+
+            if (args.Contains("--structure-editor") && EDITOR_MODE)
+            {
+                using var editor = new StructureEditorWindow();
+                editor.Run();
+                return;
+            }
 
             using var game = new VoxelGameWindow(EDITOR_MODE);
             game.Run();

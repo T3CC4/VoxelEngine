@@ -333,35 +333,36 @@ void main()
 
     private void PlaceVoxel()
     {
-        var hitPos = GetVoxelLookingAt(out bool hit, out var normal);
-        if (hit)
-        {
-            Vector3Int placePos = hitPos + normal;
-            currentStructure.AddVoxel(placePos, selectedVoxelType);
-            RebuildMesh();
-        }
+        var hitVoxel = GetVoxelLookingAt(out bool hit, out Vector3Int placePos);
+        if (!hit) return;
+
+        currentStructure.AddVoxel(placePos, selectedVoxelType);
+        RebuildMesh();
     }
 
     private void RemoveVoxel()
     {
-        var hitPos = GetVoxelLookingAt(out bool hit, out _);
-        if (hit)
-        {
-            currentStructure.RemoveVoxel(hitPos);
-            RebuildMesh();
-        }
+        var hitVoxel = GetVoxelLookingAt(out bool hit, out _);
+        if (!hit) return;
+
+        currentStructure.RemoveVoxel(hitVoxel);
+        RebuildMesh();
     }
 
-    private Vector3Int GetVoxelLookingAt(out bool hit, out Vector3Int normal)
+    private Vector3Int GetVoxelLookingAt(out bool hit, out Vector3Int placePos)
     {
         Vector3 rayStart = camera.Position;
-        Vector3 rayDir = camera.Front;
+        Vector3 rayDir = camera.Front.Normalized();
+
         float maxDistance = 50.0f;
         float step = 0.1f;
+
+        Vector3Int lastEmpty = Vector3Int.Zero;
 
         for (float dist = 0; dist < maxDistance; dist += step)
         {
             Vector3 checkPos = rayStart + rayDir * dist;
+
             Vector3Int voxelPos = new Vector3Int(
                 (int)MathF.Floor(checkPos.X),
                 (int)MathF.Floor(checkPos.Y),
@@ -369,23 +370,38 @@ void main()
             );
 
             var voxelType = currentStructure.GetVoxel(voxelPos);
+
             if (voxelType != VoxelType.Air)
             {
-                Vector3 prevPos = rayStart + rayDir * (dist - step);
-                Vector3Int prevVoxel = new Vector3Int(
-                    (int)MathF.Floor(prevPos.X),
-                    (int)MathF.Floor(prevPos.Y),
-                    (int)MathF.Floor(prevPos.Z)
+                hit = true;
+                placePos = lastEmpty;
+                return voxelPos;
+            }
+
+            lastEmpty = voxelPos;
+        }
+
+        // ---- grid placement (Y = 0) ----
+        if (MathF.Abs(rayDir.Y) > 0.0001f)
+        {
+            float t = -rayStart.Y / rayDir.Y;
+            if (t > 0 && t < maxDistance)
+            {
+                Vector3 hitPos = rayStart + rayDir * t;
+
+                hit = true;
+                placePos = new Vector3Int(
+                    (int)MathF.Floor(hitPos.X),
+                    0,
+                    (int)MathF.Floor(hitPos.Z)
                 );
 
-                normal = voxelPos - prevVoxel;
-                hit = true;
-                return voxelPos;
+                return placePos;
             }
         }
 
         hit = false;
-        normal = Vector3Int.Zero;
+        placePos = Vector3Int.Zero;
         return Vector3Int.Zero;
     }
 

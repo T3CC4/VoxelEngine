@@ -578,10 +578,13 @@ public class VoxelGameWindow : GameWindow
 
     private void LaunchStructureEditor()
     {
-        // For now, just print a message
-        // In a full implementation, you'd launch a new window
-        Console.WriteLine("Structure Editor would launch here");
-        // Could spawn new window: new StructureEditorWindow().Run();
+        var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName;
+        var psi = new System.Diagnostics.ProcessStartInfo(exePath, "--structure-editor")
+        {
+            UseShellExecute = true
+        };
+        System.Diagnostics.Process.Start(psi);
+        Console.WriteLine("Structure Editor launched as a new process");
     }
 
     private void PlaceVoxel()
