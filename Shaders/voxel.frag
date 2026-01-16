@@ -51,7 +51,7 @@ vec3 calculateLighting(vec3 normal, vec3 baseColor) {
     float sunIntensity = max(sunHeight, 0.0);
 
     vec3 sunColor = vec3(1.0, 0.95, 0.8);
-    vec3 sunLight = sunColor * sunDiffuse * sunIntensity * 0.7;
+    vec3 sunLight = sunColor * sunDiffuse * sunIntensity * 0.8;
 
     // Moon lighting
     vec3 moonDir = normalize(-moonDirection);
@@ -61,21 +61,45 @@ vec3 calculateLighting(vec3 normal, vec3 baseColor) {
     vec3 moonColor = vec3(0.6, 0.7, 1.0);
     vec3 moonLight = moonColor * moonDiffuse * moonIntensity;
 
-    // Ambient light (changes with time of day)
-    float ambientStrength = 0.3 + sunIntensity * 0.2;
-    vec3 ambient = baseColor * ambientStrength;
+    // Improved ambient light
+    float ambientStrength = 0.25 + sunIntensity * 0.25;
+    vec3 ambientColor = mix(vec3(0.1, 0.1, 0.2), vec3(0.5, 0.6, 0.7), sunIntensity);
+    vec3 ambient = baseColor * ambientColor * ambientStrength;
 
-    // Shadow mapping (simple approach - check if facing away from sun)
+    // Improved shadow calculation
     float shadow = 1.0;
-    if (sunIntensity > 0.0 && dot(normal, sunDir) < 0.0) {
-        shadow = 0.5; // Simple shadow
+
+    // Directional shadows based on sun
+    if (sunIntensity > 0.1) {
+        float facing = dot(normal, sunDir);
+
+        // Faces away from sun get strong shadows
+        if (facing < 0.0) {
+            shadow = 0.4;
+        }
+        // Faces perpendicular to sun get medium shadows
+        else if (facing < 0.5) {
+            shadow = mix(0.4, 0.8, facing * 2.0);
+        }
+        // Faces toward sun get soft shadows based on angle
+        else {
+            shadow = mix(0.8, 1.0, (facing - 0.5) * 2.0);
+        }
+
+        // Add subtle shadow variation based on normal direction
+        float verticalBias = abs(normal.y);
+        shadow = mix(shadow, shadow * 0.9, 1.0 - verticalBias);
+    } else {
+        // Night time - everything is darker
+        shadow = 0.6 + moonIntensity * 0.3;
     }
 
     // Combine lighting
     vec3 result = ambient + (sunLight + moonLight) * shadow;
 
-    // Apply ambient occlusion
-    result *= (0.6 + ambientOcclusion * 0.4);
+    // Apply ambient occlusion with stronger effect
+    float aoFactor = 0.4 + ambientOcclusion * 0.6;
+    result *= aoFactor;
 
     return result * baseColor;
 }

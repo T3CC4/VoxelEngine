@@ -20,12 +20,14 @@ public class VoxelGameWindow : GameWindow
     private ThirdPersonCamera? thirdPersonCamera;
     private Camera? editorCamera;
     private Shader? voxelShader;
+    private SkyboxRenderer? skyboxRenderer;
     private Dictionary<Vector3Int, VoxelMesh> chunkMeshes = new();
     private StructureManager structureManager;
     private WorldGenerator worldGenerator;
     private ImGuiController? imguiController;
     private TickSystem tickSystem;
     private DayNightCycle dayNightCycle;
+    private WaterSimulation? waterSimulation;
     private float gameTime = 0.0f;
 
     // Game mode
@@ -89,6 +91,9 @@ public class VoxelGameWindow : GameWindow
         worldGenerator = new WorldGenerator();
         worldGenerator.GenerateTerrain(world);
 
+        // Initialize water simulation
+        waterSimulation = new WaterSimulation(world, tickSystem, worldGenerator.GetConfig().WaterLevel);
+
         // Initialize structure manager
         structureManager = new StructureManager();
 
@@ -97,6 +102,7 @@ public class VoxelGameWindow : GameWindow
 
         // Load shaders
         voxelShader = new Shader("Shaders/voxel.vert", "Shaders/voxel.frag");
+        skyboxRenderer = new SkyboxRenderer();
 
         // Initialize mode-specific components
         if (isEditorMode)
@@ -210,9 +216,28 @@ public class VoxelGameWindow : GameWindow
         // Update day/night cycle
         dayNightCycle.Update(deltaTime);
 
-        // Update clear color based on time of day
-        Vector3 skyColor = dayNightCycle.GetSkyColor();
-        GL.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
+        // Check for water changes and rebuild affected chunks
+        if (waterSimulation != null)
+        {
+            var changedPositions = waterSimulation.GetAndClearChangedPositions();
+            if (changedPositions.Count > 0)
+            {
+                HashSet<Vector3Int> affectedChunks = new();
+                foreach (var pos in changedPositions)
+                {
+                    var chunks = world.GetAffectedChunks(pos);
+                    foreach (var chunk in chunks)
+                    {
+                        affectedChunks.Add(chunk);
+                    }
+                }
+
+                foreach (var chunkPos in affectedChunks)
+                {
+                    RebuildChunk(chunkPos);
+                }
+            }
+        }
 
         if (isEditorMode)
         {
@@ -230,6 +255,7 @@ public class VoxelGameWindow : GameWindow
             worldGenerator.LoadConfig();
             world = new VoxelWorld(world.WorldSize);
             worldGenerator.GenerateTerrain(world);
+            waterSimulation = new WaterSimulation(world, tickSystem, worldGenerator.GetConfig().WaterLevel);
             PlaceStructuresThroughoutWorld();
             RebuildAllMeshes();
         }
@@ -387,9 +413,7 @@ public class VoxelGameWindow : GameWindow
 
     private void RenderWorld()
     {
-        if (voxelShader == null) return;
-
-        voxelShader.Use();
+        if (voxelShader == null || skyboxRenderer == null) return;
 
         Matrix4 view, projection;
         Vector3 viewPos;
@@ -411,6 +435,12 @@ public class VoxelGameWindow : GameWindow
             return;
         }
 
+        // Render skybox first
+        skyboxRenderer.Render(view, projection, dayNightCycle.GetSunDirection(),
+                             dayNightCycle.GetMoonDirection(), dayNightCycle.CurrentTime);
+
+        // Render voxel world
+        voxelShader.Use();
         voxelShader.SetMatrix4("view", view);
         voxelShader.SetMatrix4("projection", projection);
         voxelShader.SetVector3("sunDirection", dayNightCycle.GetSunDirection());
@@ -600,6 +630,9 @@ public class VoxelGameWindow : GameWindow
                 currentStructure.AddVoxel(placePos - editorCursorPos, selectedVoxelType);
             }
 
+            // Notify water simulation of voxel change
+            waterSimulation?.OnVoxelChanged(placePos, selectedVoxelType);
+
             RebuildChunkAt(placePos);
         }
     }
@@ -615,6 +648,9 @@ public class VoxelGameWindow : GameWindow
             {
                 currentStructure.RemoveVoxel(hitPos - editorCursorPos);
             }
+
+            // Notify water simulation of voxel change
+            waterSimulation?.OnVoxelChanged(hitPos, VoxelType.Air);
 
             RebuildChunkAt(hitPos);
         }
@@ -698,18 +734,23 @@ public class VoxelGameWindow : GameWindow
 
         foreach (var chunkPos in affectedChunks)
         {
-            if (chunkMeshes.TryGetValue(chunkPos, out var mesh))
-            {
-                mesh.Dispose();
-            }
+            RebuildChunk(chunkPos);
+        }
+    }
 
-            var chunk = world.GetChunk(chunkPos);
-            if (chunk != null)
-            {
-                var newMesh = new VoxelMesh();
-                newMesh.BuildMesh(chunk, world);
-                chunkMeshes[chunkPos] = newMesh;
-            }
+    private void RebuildChunk(Vector3Int chunkPos)
+    {
+        if (chunkMeshes.TryGetValue(chunkPos, out var mesh))
+        {
+            mesh.Dispose();
+        }
+
+        var chunk = world.GetChunk(chunkPos);
+        if (chunk != null)
+        {
+            var newMesh = new VoxelMesh();
+            newMesh.BuildMesh(chunk, world);
+            chunkMeshes[chunkPos] = newMesh;
         }
     }
 
@@ -741,6 +782,7 @@ public class VoxelGameWindow : GameWindow
         base.OnUnload();
 
         voxelShader?.Dispose();
+        skyboxRenderer?.Dispose();
         imguiController?.Dispose();
 
         foreach (var mesh in chunkMeshes.Values)
