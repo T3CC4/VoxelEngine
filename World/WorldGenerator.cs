@@ -50,6 +50,7 @@ public class WorldGenerator
 
         Random rand = new Random(config.Seed);
 
+        // First pass: Generate terrain
         for (int x = 0; x < maxX; x++)
         {
             for (int z = 0; z < maxZ; z++)
@@ -86,11 +87,19 @@ public class WorldGenerator
 
                     world.SetVoxelType(new Vector3Int(x, y, z), type);
                 }
+            }
+        }
 
-                // Add water
-                if (terrainHeight < config.WaterLevel)
+        // Second pass: Fill water in all air blocks up to water level
+        // This ensures water fills properly around islands and elevated terrain
+        for (int x = 0; x < maxX; x++)
+        {
+            for (int z = 0; z < maxZ; z++)
+            {
+                for (int y = 0; y <= config.WaterLevel && y < maxY; y++)
                 {
-                    for (int y = terrainHeight; y <= config.WaterLevel && y < maxY; y++)
+                    var voxel = world.GetVoxel(new Vector3Int(x, y, z));
+                    if (!voxel.IsActive || voxel.Type == VoxelType.Air)
                     {
                         world.SetVoxelType(new Vector3Int(x, y, z), VoxelType.Water);
                     }
