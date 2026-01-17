@@ -112,8 +112,11 @@ public class VoxelGameWindow : GameWindow
         // Initialize infinite world with initial render distance
         world = new InfiniteVoxelWorld(renderDistance: 12, verticalChunks: 10);
 
-        // Initialize infinite world generator
-        worldGenerator = new InfiniteWorldGenerator(worldGenConfig);
+        // Initialize structure manager (needed before world generator)
+        structureManager = new StructureManager();
+
+        // Initialize infinite world generator with structure support
+        worldGenerator = new InfiniteWorldGenerator(worldGenConfig, structureManager);
 
         // Initialize async chunk loading system
         chunkLoadingSystem = new ChunkLoadingSystem(worldGenerator, world);
@@ -121,9 +124,6 @@ public class VoxelGameWindow : GameWindow
 
         // Initialize water simulation
         waterSimulation = new WaterSimulation(world, tickSystem, worldGenConfig.WaterLevel);
-
-        // Initialize structure manager
-        structureManager = new StructureManager();
 
         // Load shaders
         voxelShader = new Shader("Shaders/voxel.vert", "Shaders/voxel.frag");
@@ -317,7 +317,7 @@ public class VoxelGameWindow : GameWindow
         {
             Console.WriteLine("Hot reloading worldgen...");
             worldGenConfig = WorldGenConfig.LoadFromFile();
-            worldGenerator = new InfiniteWorldGenerator(worldGenConfig);
+            worldGenerator = new InfiniteWorldGenerator(worldGenConfig, structureManager);
 
             // Stop current loading system
             chunkLoadingSystem.Stop();
@@ -759,8 +759,10 @@ public class VoxelGameWindow : GameWindow
                     if (selectedStructureIndex >= 0 && selectedStructureIndex < structures.Count)
                     {
                         var structure = structures[selectedStructureIndex];
-                        structure.PlaceInWorld(world, editorCursorPos);
+                        // Use PlaceOnGround to automatically find terrain and place on surface
+                        structure.PlaceOnGround(world, editorCursorPos, maxSearchDown: 128);
                         RebuildAllMeshes();
+                        Console.WriteLine($"Placed {structure.Name} on ground at {editorCursorPos}");
                     }
                 }
             }

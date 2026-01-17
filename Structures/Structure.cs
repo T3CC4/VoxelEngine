@@ -66,6 +66,50 @@ public class Structure
         }
     }
 
+    public void PlaceOnGround(IVoxelWorld world, Vector3Int worldPosition, int maxSearchDown = 64)
+    {
+        // Find ground level starting from worldPosition and searching down
+        int groundY = FindGroundLevel(world, worldPosition, maxSearchDown);
+
+        if (groundY == -1)
+        {
+            // No ground found, place at original position
+            PlaceInWorld(world, worldPosition);
+            return;
+        }
+
+        // Place structure with base at ground level
+        Vector3Int groundPosition = new Vector3Int(worldPosition.X, groundY, worldPosition.Z);
+        PlaceInWorld(world, groundPosition);
+    }
+
+    private int FindGroundLevel(IVoxelWorld world, Vector3Int startPosition, int maxSearchDown)
+    {
+        // Search downward from start position to find first solid block
+        for (int y = startPosition.Y; y >= startPosition.Y - maxSearchDown && y >= 0; y--)
+        {
+            Vector3Int checkPos = new Vector3Int(startPosition.X, y, startPosition.Z);
+            var voxel = world.GetVoxel(checkPos);
+
+            if (voxel.IsActive && voxel.Type.IsSolid() && voxel.Type != VoxelType.Water)
+            {
+                // Found solid ground, return position above it
+                return y + 1;
+            }
+        }
+
+        return -1; // No ground found
+    }
+
+    public int GetBaseHeight()
+    {
+        // Return the minimum Y position of all voxels (the bottom of the structure)
+        if (Voxels.Count == 0)
+            return 0;
+
+        return Voxels.Min(v => v.Position.Y);
+    }
+
     public void Save(string structuresPath)
     {
         string categoryPath = Path.Combine(structuresPath, Category.ToString());

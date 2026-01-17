@@ -191,6 +191,9 @@ public class WorldGenConfig
     public float NoisePersistence { get; set; } = 0.5f;
     public int WaterLevel { get; set; } = 150;        // Water level just below surface
 
+    // Structure generation settings
+    public float StructureDensity { get; set; } = 0.05f; // 5% chance per chunk (0.0 to 1.0)
+
     // Legacy properties for old world generator
     public float BaseHeight { get; set; } = 8.0f;
 
