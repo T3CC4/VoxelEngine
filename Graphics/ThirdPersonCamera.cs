@@ -50,6 +50,7 @@ public class ThirdPersonCamera
     public float AspectRatio { get; set; }
     public float Near { get; set; } = 0.1f;
     public float Far { get; set; } = 1000.0f;
+    public int ViewDistanceChunks { get; set; } = 12;
 
     public ThirdPersonCamera(Vector3 targetPosition, float aspectRatio)
     {

@@ -16,18 +16,20 @@ namespace VoxelEngine.Window;
 public class VoxelGameWindow : GameWindow
 {
     private readonly bool isEditorMode;
-    private VoxelWorld world;
+    private InfiniteVoxelWorld world;
     private ThirdPersonCamera? thirdPersonCamera;
     private Camera? editorCamera;
     private Shader? voxelShader;
     private SkyboxRenderer? skyboxRenderer;
     private Dictionary<Vector3Int, VoxelMesh> chunkMeshes = new();
     private StructureManager structureManager;
-    private WorldGenerator worldGenerator;
+    private InfiniteWorldGenerator worldGenerator;
+    private WorldGenConfig worldGenConfig;
     private ImGuiController? imguiController;
     private TickSystem tickSystem;
     private DayNightCycle dayNightCycle;
     private WaterSimulation? waterSimulation;
+    private FrustumCulling frustumCulling;
     private float gameTime = 0.0f;
 
     // Game mode
@@ -84,21 +86,23 @@ public class VoxelGameWindow : GameWindow
         dayNightCycle = new DayNightCycle();
         dayNightCycle.SetToDawn(); // Start at dawn
 
-        // Initialize world
-        world = new VoxelWorld(new Vector3Int(8, 4, 8));
+        // Initialize frustum culling
+        frustumCulling = new FrustumCulling();
 
-        // Initialize world generator
-        worldGenerator = new WorldGenerator();
-        worldGenerator.GenerateTerrain(world);
+        // Load world generation config
+        worldGenConfig = WorldGenConfig.LoadFromFile();
+
+        // Initialize infinite world with initial render distance
+        world = new InfiniteVoxelWorld(renderDistance: 12, verticalChunks: 10);
+
+        // Initialize infinite world generator
+        worldGenerator = new InfiniteWorldGenerator(worldGenConfig);
 
         // Initialize water simulation
-        waterSimulation = new WaterSimulation(world, tickSystem, worldGenerator.GetConfig().WaterLevel);
+        waterSimulation = new WaterSimulation(world, tickSystem, worldGenConfig.WaterLevel);
 
         // Initialize structure manager
         structureManager = new StructureManager();
-
-        // Place structures throughout world
-        PlaceStructuresThroughoutWorld();
 
         // Load shaders
         voxelShader = new Shader("Shaders/voxel.vert", "Shaders/voxel.frag");
@@ -108,14 +112,22 @@ public class VoxelGameWindow : GameWindow
         if (isEditorMode)
         {
             imguiController = new ImGuiController(this);
-            editorCamera = new Camera(new Vector3(64, 40, 64), Size.X / (float)Size.Y);
+            editorCamera = new Camera(new Vector3(0, 200, 0), Size.X / (float)Size.Y);
             editorCamera.Pitch = -30;
+            editorCamera.ViewDistanceChunks = 12;
+
+            // Generate initial chunks around editor spawn
+            GenerateChunksAroundPosition(editorCamera.Position);
         }
         else
         {
             // Game mode - setup third person camera and player
-            playerPosition = new Vector3(64, 30, 64);
+            playerPosition = new Vector3(0, 200, 0);
             thirdPersonCamera = new ThirdPersonCamera(playerPosition, Size.X / (float)Size.Y);
+            thirdPersonCamera.ViewDistanceChunks = 12;
+
+            // Generate initial chunks
+            GenerateChunksAroundPosition(playerPosition);
 
             // Find suitable spawn position
             FindSpawnPosition();
@@ -134,8 +146,8 @@ public class VoxelGameWindow : GameWindow
 
     private void FindSpawnPosition()
     {
-        // Find a solid ground position
-        for (int y = world.WorldSize.Y * Chunk.ChunkSize - 1; y >= 0; y--)
+        // Find a solid ground position (search downward from spawn height)
+        for (int y = 250; y >= 0; y--)
         {
             var voxel = world.GetVoxel(new Vector3Int((int)playerPosition.X, y, (int)playerPosition.Z));
             if (voxel.IsActive && voxel.Type.IsSolid())
@@ -148,58 +160,61 @@ public class VoxelGameWindow : GameWindow
         }
     }
 
-    private void PlaceStructuresThroughoutWorld()
+    private void GenerateChunksAroundPosition(Vector3 position)
     {
-        Random rand = new Random(worldGenerator.GetConfig().Seed);
-        int worldWidth = world.WorldSize.X * Chunk.ChunkSize;
-        int worldDepth = world.WorldSize.Z * Chunk.ChunkSize;
+        // Update chunks in the infinite world
+        world.UpdateChunksAroundPosition(position);
 
-        // Place trees
-        var trees = structureManager.AmbientStructures.Where(s => s.Name.Contains("Tree")).ToList();
-        if (trees.Any())
+        // Generate terrain for all new chunks
+        foreach (var chunk in world.GetAllChunks())
         {
-            for (int i = 0; i < 50; i++)
-            {
-                int x = rand.Next(5, worldWidth - 5);
-                int z = rand.Next(5, worldDepth - 5);
+            worldGenerator.GenerateChunk(chunk, world);
+        }
+    }
 
-                // Find ground level
-                for (int y = world.WorldSize.Y * Chunk.ChunkSize - 1; y >= 0; y--)
-                {
-                    var voxel = world.GetVoxel(new Vector3Int(x, y, z));
-                    if (voxel.Type == VoxelType.Grass)
-                    {
-                        var tree = trees[rand.Next(trees.Count)];
-                        tree.PlaceInWorld(world, new Vector3Int(x, y + 1, z));
-                        break;
-                    }
-                }
+    private void UpdateChunksAroundCamera(Vector3 position, int viewDistance)
+    {
+        // Get existing chunk positions before update
+        var existingChunks = new HashSet<Vector3Int>(world.GetAllChunkPositions());
+
+        // Update the infinite world based on new position
+        world.UpdateChunksAroundPosition(position);
+
+        // Get new chunk positions after update
+        var currentChunks = new HashSet<Vector3Int>(world.GetAllChunkPositions());
+
+        // Find chunks that were added
+        var addedChunks = currentChunks.Except(existingChunks).ToList();
+
+        // Generate terrain for new chunks
+        foreach (var chunkPos in addedChunks)
+        {
+            var chunk = world.GetChunk(chunkPos);
+            if (chunk != null)
+            {
+                worldGenerator.GenerateChunk(chunk, world);
+
+                // Build mesh for the new chunk
+                var mesh = new VoxelMesh();
+                mesh.BuildMesh(chunk, world);
+                chunkMeshes[chunkPos] = mesh;
             }
         }
 
-        // Place houses
-        var houses = structureManager.ArchitectureStructures;
-        if (houses.Any())
-        {
-            for (int i = 0; i < 10; i++)
-            {
-                int x = rand.Next(10, worldWidth - 10);
-                int z = rand.Next(10, worldDepth - 10);
+        // Find chunks that were removed
+        var removedChunks = existingChunks.Except(currentChunks).ToList();
 
-                // Find ground level
-                for (int y = world.WorldSize.Y * Chunk.ChunkSize - 1; y >= 0; y--)
-                {
-                    var voxel = world.GetVoxel(new Vector3Int(x, y, z));
-                    if (voxel.Type == VoxelType.Grass)
-                    {
-                        var house = houses[rand.Next(houses.Count)];
-                        house.PlaceInWorld(world, new Vector3Int(x, y + 1, z));
-                        break;
-                    }
-                }
+        // Clean up meshes for removed chunks
+        foreach (var chunkPos in removedChunks)
+        {
+            if (chunkMeshes.TryGetValue(chunkPos, out var mesh))
+            {
+                mesh.Dispose();
+                chunkMeshes.Remove(chunkPos);
             }
         }
     }
+
 
     protected override void OnUpdateFrame(FrameEventArgs args)
     {
@@ -242,21 +257,44 @@ public class VoxelGameWindow : GameWindow
         if (isEditorMode)
         {
             UpdateEditor(deltaTime);
+
+            // Update chunks around editor camera
+            if (editorCamera != null)
+            {
+                UpdateChunksAroundCamera(editorCamera.Position, editorCamera.ViewDistanceChunks);
+            }
         }
         else
         {
             UpdateGame(deltaTime);
+
+            // Update chunks around player
+            if (player != null && thirdPersonCamera != null)
+            {
+                UpdateChunksAroundCamera(player.Position, thirdPersonCamera.ViewDistanceChunks);
+            }
         }
 
         // Hot reload worldgen in editor
         if (isEditorMode && KeyboardState.IsKeyPressed(Keys.F5))
         {
             Console.WriteLine("Hot reloading worldgen...");
-            worldGenerator.LoadConfig();
-            world = new VoxelWorld(world.WorldSize);
-            worldGenerator.GenerateTerrain(world);
-            waterSimulation = new WaterSimulation(world, tickSystem, worldGenerator.GetConfig().WaterLevel);
-            PlaceStructuresThroughoutWorld();
+            worldGenConfig = WorldGenConfig.LoadFromFile();
+            worldGenerator = new InfiniteWorldGenerator(worldGenConfig);
+
+            // Clear and regenerate current chunks
+            foreach (var mesh in chunkMeshes.Values)
+            {
+                mesh.Dispose();
+            }
+            chunkMeshes.Clear();
+
+            if (editorCamera != null)
+            {
+                GenerateChunksAroundPosition(editorCamera.Position);
+            }
+
+            waterSimulation = new WaterSimulation(world, tickSystem, worldGenConfig.WaterLevel);
             RebuildAllMeshes();
         }
     }
@@ -435,6 +473,10 @@ public class VoxelGameWindow : GameWindow
             return;
         }
 
+        // Update frustum for culling
+        Matrix4 viewProjection = view * projection;
+        frustumCulling.UpdateFrustum(viewProjection);
+
         // Render skybox first
         skyboxRenderer.Render(view, projection, dayNightCycle.GetSunDirection(),
                              dayNightCycle.GetMoonDirection(), dayNightCycle.CurrentTime);
@@ -451,14 +493,28 @@ public class VoxelGameWindow : GameWindow
         voxelShader.SetFloat("dayNightCycle", dayNightCycle.CurrentTime);
         voxelShader.SetFloat("time", gameTime);
 
+        int renderedChunks = 0;
+        int totalChunks = 0;
+
         foreach (var chunk in world.GetAllChunks())
         {
-            Matrix4 model = Matrix4.CreateTranslation(
+            totalChunks++;
+
+            Vector3 chunkWorldPos = new Vector3(
                 chunk.Position.X * Chunk.ChunkSize,
                 chunk.Position.Y * Chunk.ChunkSize,
                 chunk.Position.Z * Chunk.ChunkSize
             );
 
+            // Frustum culling - skip chunks outside view frustum
+            if (!frustumCulling.IsChunkVisible(chunkWorldPos, Chunk.ChunkSize))
+            {
+                continue;
+            }
+
+            renderedChunks++;
+
+            Matrix4 model = Matrix4.CreateTranslation(chunkWorldPos);
             voxelShader.SetMatrix4("model", model);
 
             if (chunkMeshes.TryGetValue(chunk.Position, out var mesh))
@@ -477,7 +533,21 @@ public class VoxelGameWindow : GameWindow
         ImGui.Text($"FPS: {1.0 / ImGui.GetIO().DeltaTime:F0}");
         ImGui.Text($"Tick: {tickSystem.CurrentTick} ({tickSystem.TickRate} TPS)");
         ImGui.Text($"Camera: {editorCamera.Position:F1}");
-        ImGui.Text($"Chunks: {chunkMeshes.Count}");
+        ImGui.Text($"Chunks Loaded: {world.GetAllChunks().Count()}");
+        ImGui.Text($"Chunks Meshed: {chunkMeshes.Count}");
+        ImGui.Separator();
+
+        // View Distance Control
+        if (ImGui.CollapsingHeader("Render Settings"))
+        {
+            int viewDist = editorCamera.ViewDistanceChunks;
+            if (ImGui.SliderInt("View Distance (chunks)", ref viewDist, 4, 24))
+            {
+                editorCamera.ViewDistanceChunks = viewDist;
+            }
+            ImGui.Text($"Render Distance: {viewDist * Chunk.ChunkSize} blocks");
+        }
+
         ImGui.Separator();
 
         // World generation
@@ -494,9 +564,9 @@ public class VoxelGameWindow : GameWindow
                 });
             }
 
-            var config = worldGenerator.GetConfig();
-            ImGui.Text($"Seed: {config.Seed}");
-            ImGui.Text($"Water Level: {config.WaterLevel}");
+            ImGui.Text($"Seed: {worldGenConfig.Seed}");
+            ImGui.Text($"Water Level: {worldGenConfig.WaterLevel}");
+            ImGui.Text($"Max Height: {worldGenConfig.MaxHeight}");
         }
 
         // Day/Night Cycle

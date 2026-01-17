@@ -1,6 +1,6 @@
 namespace VoxelEngine.Core;
 
-public class VoxelWorld
+public class VoxelWorld : IVoxelWorld
 {
     private readonly Dictionary<Vector3Int, Chunk> chunks;
     public Vector3Int WorldSize { get; }

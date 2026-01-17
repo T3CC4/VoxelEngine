@@ -6,7 +6,7 @@ namespace VoxelEngine.World;
 
 public class WaterSimulation
 {
-    private VoxelWorld world;
+    private IVoxelWorld world;
     private TickSystem tickSystem;
     private int waterLevel;
     private int tickCounter = 0;
@@ -15,7 +15,7 @@ public class WaterSimulation
     private Queue<Vector3Int> updateQueue = new();
     private HashSet<Vector3Int> changedPositions = new();
 
-    public WaterSimulation(VoxelWorld world, TickSystem tickSystem, int waterLevel)
+    public WaterSimulation(IVoxelWorld world, TickSystem tickSystem, int waterLevel)
     {
         this.world = world;
         this.tickSystem = tickSystem;
@@ -24,16 +24,19 @@ public class WaterSimulation
         // Register tick action
         tickSystem.RegisterTickAction(OnTick);
 
-        // Initialize water block tracking
-        ScanForWaterBlocks();
+        // Initialize water block tracking (only for finite worlds)
+        if (world is VoxelWorld finiteWorld)
+        {
+            ScanForWaterBlocks(finiteWorld);
+        }
     }
 
-    private void ScanForWaterBlocks()
+    private void ScanForWaterBlocks(VoxelWorld finiteWorld)
     {
         waterBlocks.Clear();
-        int maxX = world.WorldSize.X * Chunk.ChunkSize;
-        int maxY = world.WorldSize.Y * Chunk.ChunkSize;
-        int maxZ = world.WorldSize.Z * Chunk.ChunkSize;
+        int maxX = finiteWorld.WorldSize.X * Chunk.ChunkSize;
+        int maxY = finiteWorld.WorldSize.Y * Chunk.ChunkSize;
+        int maxZ = finiteWorld.WorldSize.Z * Chunk.ChunkSize;
 
         for (int x = 0; x < maxX; x++)
         {
