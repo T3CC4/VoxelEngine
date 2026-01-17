@@ -35,6 +35,10 @@ public class VoxelGameWindow : GameWindow
     private float gameTime = 0.0f;
     private bool initialLoadComplete = false;
 
+    // Occlusion culling cache
+    private Dictionary<Vector3Int, bool> loadedChunksCache = new();
+    private int lastLoadedChunksCount = 0;
+
     // Render stats
     private int lastRenderedChunks = 0;
     private int lastTotalChunks = 0;
@@ -223,8 +227,8 @@ public class VoxelGameWindow : GameWindow
     private void ProcessChunkMeshing()
     {
         // Build meshes for chunks that have finished terrain generation
-        // Limit to 1 chunk per frame with 5ms time budget to maintain 60+ FPS
-        var chunksReady = chunkLoadingSystem.GetChunksReadyForMeshing(maxPerFrame: 1, maxTimeMs: 5.0f);
+        // Limit to 1 chunk per frame with 3ms time budget to maintain 60+ FPS
+        var chunksReady = chunkLoadingSystem.GetChunksReadyForMeshing(maxPerFrame: 1, maxTimeMs: 3.0f);
 
         foreach (var chunk in chunksReady)
         {
@@ -525,11 +529,16 @@ public class VoxelGameWindow : GameWindow
         // Update occlusion culling
         occlusionCulling.UpdateCameraPosition(viewPos);
 
-        // Build loaded chunks dictionary for occlusion culling
-        var loadedChunks = new Dictionary<Vector3Int, bool>();
-        foreach (var chunk in world.GetAllChunks())
+        // Build loaded chunks dictionary only when chunk count changes (cache it)
+        var allChunks = world.GetAllChunks().ToList();
+        if (allChunks.Count != lastLoadedChunksCount)
         {
-            loadedChunks[chunk.Position] = true;
+            loadedChunksCache.Clear();
+            foreach (var chunk in allChunks)
+            {
+                loadedChunksCache[chunk.Position] = true;
+            }
+            lastLoadedChunksCount = allChunks.Count;
         }
 
         // Render skybox first
@@ -553,7 +562,7 @@ public class VoxelGameWindow : GameWindow
         int frustumCulled = 0;
         int occlusionCulled = 0;
 
-        foreach (var chunk in world.GetAllChunks())
+        foreach (var chunk in allChunks)
         {
             totalChunks++;
 
@@ -572,7 +581,7 @@ public class VoxelGameWindow : GameWindow
 
             // Occlusion culling - skip chunks hidden by terrain (optimized for performance)
             if (!occlusionCulling.IsChunkVisibleWithOcclusion(chunk.Position, chunkWorldPos, viewPos,
-                                                               viewFront, Chunk.ChunkSize, loadedChunks))
+                                                               viewFront, Chunk.ChunkSize, loadedChunksCache))
             {
                 occlusionCulled++;
                 continue;
