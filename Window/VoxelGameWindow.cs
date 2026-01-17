@@ -98,8 +98,9 @@ public class VoxelGameWindow : GameWindow
         // Initialize frustum culling
         frustumCulling = new FrustumCulling();
 
-        // Initialize occlusion culling
+        // Initialize occlusion culling (disabled during initial load for better performance)
         occlusionCulling = new OcclusionCulling();
+        occlusionCulling.OcclusionEnabled = false;
 
         // Load world generation config
         worldGenConfig = WorldGenConfig.LoadFromFile();
@@ -222,8 +223,8 @@ public class VoxelGameWindow : GameWindow
     private void ProcessChunkMeshing()
     {
         // Build meshes for chunks that have finished terrain generation
-        // Limit to 4 per frame to avoid stuttering
-        var chunksReady = chunkLoadingSystem.GetChunksReadyForMeshing(maxPerFrame: 4);
+        // Limit to 1 chunk per frame with 5ms time budget to maintain 60+ FPS
+        var chunksReady = chunkLoadingSystem.GetChunksReadyForMeshing(maxPerFrame: 1, maxTimeMs: 5.0f);
 
         foreach (var chunk in chunksReady)
         {
@@ -237,6 +238,7 @@ public class VoxelGameWindow : GameWindow
         if (!initialLoadComplete && !chunkLoadingSystem.IsLoading)
         {
             initialLoadComplete = true;
+            occlusionCulling.OcclusionEnabled = true; // Re-enable after initial load
             Console.WriteLine("Initial chunk loading complete!");
         }
     }
@@ -290,6 +292,7 @@ public class VoxelGameWindow : GameWindow
             // Update chunks around editor camera
             if (editorCamera != null)
             {
+                chunkLoadingSystem.UpdateCameraPosition(editorCamera.Position);
                 UpdateChunksAroundCamera(editorCamera.Position, editorCamera.ViewDistanceChunks);
             }
         }
@@ -300,6 +303,7 @@ public class VoxelGameWindow : GameWindow
             // Update chunks around player
             if (player != null && thirdPersonCamera != null)
             {
+                chunkLoadingSystem.UpdateCameraPosition(player.Position);
                 UpdateChunksAroundCamera(player.Position, thirdPersonCamera.ViewDistanceChunks);
             }
         }
@@ -557,9 +561,8 @@ public class VoxelGameWindow : GameWindow
                 continue;
             }
 
-            // Occlusion culling - skip chunks hidden by other chunks
-            if (!occlusionCulling.IsChunkVisibleWithOcclusion(chunk.Position, chunkWorldPos, viewPos,
-                                                               new Dictionary<Vector3Int, bool>(), Chunk.ChunkSize))
+            // Occlusion culling - skip chunks hidden by terrain (optimized for performance)
+            if (!occlusionCulling.IsChunkVisibleWithOcclusion(chunk.Position, chunkWorldPos, viewPos, Chunk.ChunkSize))
             {
                 occlusionCulled++;
                 continue;
@@ -601,6 +604,12 @@ public class VoxelGameWindow : GameWindow
         ImGui.Text($"Occlusion Culled: {lastOcclusionCulled}");
         float cullPercentage = lastTotalChunks > 0 ? ((lastFrustumCulled + lastOcclusionCulled) * 100.0f / lastTotalChunks) : 0;
         ImGui.Text($"Culling Efficiency: {cullPercentage:F1}%");
+
+        bool occlusionEnabled = occlusionCulling.OcclusionEnabled;
+        if (ImGui.Checkbox("Occlusion Culling", ref occlusionEnabled))
+        {
+            occlusionCulling.OcclusionEnabled = occlusionEnabled;
+        }
         ImGui.Separator();
 
         // Loading status
