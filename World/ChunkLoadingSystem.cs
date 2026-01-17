@@ -97,9 +97,9 @@ public class ChunkLoadingSystem
     {
         // Quick check - if there are any active voxels, consider it generated
         // This is a simple heuristic
-        foreach (var voxel in chunk.GetVoxels())
+        foreach (var voxel in chunk.GetAllVoxels())
         {
-            if (voxel.IsActive)
+            if (voxel.voxel.IsActive)
                 return true;
         }
         return false;
