@@ -109,30 +109,32 @@ vec3 renderStars(vec3 viewDir, vec3 moonDir) {
         return vec3(0.0);
     }
 
-    // Rotate view direction to align with moon (stars rotate with moon)
-    // Create a simple rotation based on moon direction
-    vec3 rotatedView = viewDir;
-
     // Use moon direction to offset the star field
     vec3 offset = moonDir * dayNightCycle * 10.0;
-    vec3 p = normalize(rotatedView + offset * 0.1) * 100.0;
+    vec3 p = normalize(viewDir + offset * 0.1) * 100.0;
 
     float starField = 0.0;
 
-    // Fewer, brighter stars - reduced from 3 iterations to 1
-    vec3 q = fract(p * 0.15) - 0.5; // Lower frequency = fewer stars
+    // Much smaller stars - very tight threshold
+    vec3 q = fract(p * 0.2) - 0.5; // Adjust frequency
     float d = length(q);
-    float brightness = smoothstep(0.48, 0.35, d); // Tighter threshold = fewer stars
+
+    // Create time-based twinkling effect
+    float twinkle = sin(d * 50.0 + dayNightCycle * 20.0) * 0.3 + 0.7;
+
+    // Very tight threshold for tiny stars
+    float brightness = smoothstep(0.498, 0.485, d) * twinkle;
     starField = brightness;
 
-    // Add a few larger stars
-    vec3 q2 = fract(p * 0.08 + vec3(0.5)) - 0.5;
+    // Add a few even tinier stars with different twinkling
+    vec3 q2 = fract(p * 0.12 + vec3(0.5)) - 0.5;
     float d2 = length(q2);
-    float brightness2 = smoothstep(0.49, 0.4, d2) * 1.5;
+    float twinkle2 = sin(d2 * 40.0 + dayNightCycle * 25.0 + 1.5) * 0.4 + 0.6;
+    float brightness2 = smoothstep(0.499, 0.49, d2) * twinkle2 * 1.2;
     starField += brightness2;
 
     vec3 stars = vec3(starField) * starIntensity;
-    return stars * 0.8; // Slightly brighter individual stars
+    return stars * 1.0;
 }
 
 void main()
