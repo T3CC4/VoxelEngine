@@ -8,6 +8,7 @@ using VoxelEngine.Editor;
 using VoxelEngine.Game;
 using VoxelEngine.Graphics;
 using VoxelEngine.Structures;
+using VoxelEngine.Decorations;
 using VoxelEngine.World;
 using ImGuiNET;
 
@@ -23,6 +24,7 @@ public class VoxelGameWindow : GameWindow
     private SkyboxRenderer? skyboxRenderer;
     private Dictionary<Vector3Int, VoxelMesh> chunkMeshes = new();
     private StructureManager structureManager;
+    private DecorationManager decorationManager;
     private InfiniteWorldGenerator worldGenerator;
     private WorldGenConfig worldGenConfig;
     private ChunkLoadingSystem chunkLoadingSystem;
@@ -115,8 +117,11 @@ public class VoxelGameWindow : GameWindow
         // Initialize structure manager (needed before world generator)
         structureManager = new StructureManager();
 
-        // Initialize infinite world generator with structure support
-        worldGenerator = new InfiniteWorldGenerator(worldGenConfig, structureManager);
+        // Initialize decoration manager
+        decorationManager = new DecorationManager();
+
+        // Initialize infinite world generator with structure and decoration support
+        worldGenerator = new InfiniteWorldGenerator(worldGenConfig, structureManager, decorationManager);
 
         // Initialize async chunk loading system
         chunkLoadingSystem = new ChunkLoadingSystem(worldGenerator, world);

@@ -6,6 +6,7 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 using VoxelEngine.Core;
 using VoxelEngine.Graphics;
 using VoxelEngine.Structures;
+using VoxelEngine.World;
 using ImGuiNET;
 
 namespace VoxelEngine.Editor;
@@ -29,6 +30,10 @@ public class StructureEditorWindow : GameWindow
 
     private string structureName = "NewStructure";
     private StructureCategory structureCategory = StructureCategory.Architecture;
+    private float spawnFrequency = 0.05f;
+    private bool[] biomesEnabled = new bool[5]; // One for each BiomeType
+    private List<Structure> availableStructures = new();
+    private int selectedLoadStructureIndex = -1;
 
     public StructureEditorWindow(Structure? existingStructure = null)
         : base(GameWindowSettings.Default, new NativeWindowSettings()
@@ -43,6 +48,16 @@ public class StructureEditorWindow : GameWindow
         })
     {
         currentStructure = existingStructure ?? new Structure("NewStructure", StructureCategory.Architecture);
+        structureName = currentStructure.Name;
+        structureCategory = currentStructure.Category;
+        spawnFrequency = currentStructure.SpawnFrequency;
+
+        // Initialize biome checkboxes based on structure's allowed biomes
+        for (int i = 0; i < biomesEnabled.Length; i++)
+        {
+            biomesEnabled[i] = currentStructure.AllowedBiomes.Contains((BiomeType)i);
+        }
+
         VSync = VSyncMode.On;
     }
 
@@ -59,8 +74,8 @@ public class StructureEditorWindow : GameWindow
         camera = new Camera(new Vector3(16, 16, 16), Size.X / (float)Size.Y);
         camera.Pitch = -30;
 
-        // Load shaders
-        voxelShader = new Shader("Shaders/voxel.vert", "Shaders/voxel.frag");
+        // Load unlit shaders for editor
+        voxelShader = new Shader("Shaders/voxel_unlit.vert", "Shaders/voxel_unlit.frag");
         CreateGridShader();
 
         // Initialize ImGui
@@ -68,6 +83,9 @@ public class StructureEditorWindow : GameWindow
 
         // Create grid
         CreateGrid();
+
+        // Load available structures
+        LoadAvailableStructures();
 
         // Build initial mesh
         RebuildMesh();
@@ -249,17 +267,13 @@ void main()
             GL.BindVertexArray(0);
         }
 
-        // Render structure
+        // Render structure (using unlit shader, no lighting uniforms needed)
         if (voxelShader != null && structureMesh != null)
         {
             voxelShader.Use();
             voxelShader.SetMatrix4("view", view);
             voxelShader.SetMatrix4("projection", projection);
             voxelShader.SetMatrix4("model", Matrix4.Identity);
-            voxelShader.SetVector3("lightDir", new Vector3(-0.3f, -1.0f, -0.5f));
-            voxelShader.SetVector3("viewPos", camera.Position);
-            voxelShader.SetVector3("fogColor", new Vector3(0.2f, 0.2f, 0.2f));
-            voxelShader.SetFloat("fogDensity", 0.001f);
 
             structureMesh.Render();
         }
@@ -280,6 +294,28 @@ void main()
         ImGui.Text($"Voxels: {currentStructure.Voxels.Count}");
         ImGui.Separator();
 
+        // Load existing structure
+        ImGui.Text("Load Existing Structure:");
+        if (availableStructures.Count > 0)
+        {
+            string[] structureNames = availableStructures.Select(s => $"{s.Category}_{s.Name}").ToArray();
+            int currentIndex = selectedLoadStructureIndex;
+            if (ImGui.Combo("##LoadStructure", ref currentIndex, structureNames, structureNames.Length))
+            {
+                selectedLoadStructureIndex = currentIndex;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Load"))
+            {
+                LoadStructure(selectedLoadStructureIndex);
+            }
+        }
+        else
+        {
+            ImGui.Text("No structures found");
+        }
+        ImGui.Separator();
+
         // Structure info
         byte[] nameBuffer = System.Text.Encoding.UTF8.GetBytes(structureName);
         Array.Resize(ref nameBuffer, 256);
@@ -294,6 +330,23 @@ void main()
         {
             structureCategory = (StructureCategory)categoryIndex;
         }
+
+        ImGui.Separator();
+
+        // Biome settings
+        ImGui.Text("Allowed Biomes (none = all):");
+        string[] biomeNames = Enum.GetNames(typeof(BiomeType));
+        for (int i = 0; i < biomesEnabled.Length; i++)
+        {
+            ImGui.Checkbox(biomeNames[i], ref biomesEnabled[i]);
+        }
+
+        ImGui.Separator();
+
+        // Spawn frequency
+        ImGui.Text("Spawn Frequency:");
+        ImGui.SliderFloat("##SpawnFrequency", ref spawnFrequency, 0.0f, 1.0f, $"{spawnFrequency:F3}");
+        ImGui.Text($"({spawnFrequency * 100:F1}% chance per location)");
 
         ImGui.Separator();
 
@@ -449,11 +502,55 @@ void main()
     {
         currentStructure.Name = structureName;
         currentStructure.Category = structureCategory;
+        currentStructure.SpawnFrequency = spawnFrequency;
+
+        // Update allowed biomes based on checkboxes
+        currentStructure.AllowedBiomes.Clear();
+        for (int i = 0; i < biomesEnabled.Length; i++)
+        {
+            if (biomesEnabled[i])
+            {
+                currentStructure.AllowedBiomes.Add((BiomeType)i);
+            }
+        }
 
         var manager = new StructureManager();
         manager.SaveStructure(currentStructure);
 
         Console.WriteLine($"Structure '{structureName}' saved successfully!");
+
+        // Reload available structures
+        LoadAvailableStructures();
+    }
+
+    private void LoadAvailableStructures()
+    {
+        availableStructures.Clear();
+        var manager = new StructureManager();
+
+        // Load all structures from both categories
+        availableStructures.AddRange(manager.ArchitectureStructures);
+        availableStructures.AddRange(manager.AmbientStructures);
+    }
+
+    private void LoadStructure(int index)
+    {
+        if (index < 0 || index >= availableStructures.Count)
+            return;
+
+        currentStructure = availableStructures[index];
+        structureName = currentStructure.Name;
+        structureCategory = currentStructure.Category;
+        spawnFrequency = currentStructure.SpawnFrequency;
+
+        // Update biome checkboxes
+        for (int i = 0; i < biomesEnabled.Length; i++)
+        {
+            biomesEnabled[i] = currentStructure.AllowedBiomes.Contains((BiomeType)i);
+        }
+
+        RebuildMesh();
+        Console.WriteLine($"Loaded structure '{currentStructure.Name}'");
     }
 
     private void CaptureMouse()

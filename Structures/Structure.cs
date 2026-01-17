@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using VoxelEngine.Core;
+using VoxelEngine.World;
 
 namespace VoxelEngine.Structures;
 
@@ -15,6 +16,12 @@ public class Structure
     public StructureCategory Category { get; set; }
     public Vector3Int Size { get; set; }
     public List<VoxelData> Voxels { get; set; } = new();
+
+    // Biome associations (empty means all biomes)
+    public List<BiomeType> AllowedBiomes { get; set; } = new();
+
+    // Spawn frequency (0.0 to 1.0, where 1.0 = 100% chance per eligible location)
+    public float SpawnFrequency { get; set; } = 0.05f;
 
     [JsonIgnore]
     public string FileName => $"{Category}_{Name}.json";
@@ -108,6 +115,15 @@ public class Structure
             return 0;
 
         return Voxels.Min(v => v.Position.Y);
+    }
+
+    public bool CanSpawnInBiome(BiomeType biome)
+    {
+        // If no biomes specified, can spawn in all biomes
+        if (AllowedBiomes.Count == 0)
+            return true;
+
+        return AllowedBiomes.Contains(biome);
     }
 
     public void Save(string structuresPath)
