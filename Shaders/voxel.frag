@@ -51,7 +51,7 @@ vec3 calculateLighting(vec3 normal, vec3 baseColor) {
     float sunIntensity = max(sunHeight, 0.0);
 
     vec3 sunColor = vec3(1.0, 0.95, 0.8);
-    vec3 sunLight = sunColor * sunDiffuse * sunIntensity * 0.8;
+    vec3 sunLight = sunColor * sunDiffuse * sunIntensity;
 
     // Moon lighting
     vec3 moonDir = normalize(-moonDirection);
@@ -61,63 +61,18 @@ vec3 calculateLighting(vec3 normal, vec3 baseColor) {
     vec3 moonColor = vec3(0.6, 0.7, 1.0);
     vec3 moonLight = moonColor * moonDiffuse * moonIntensity;
 
-    // Improved ambient light
-    float ambientStrength = 0.25 + sunIntensity * 0.25;
-    vec3 ambientColor = mix(vec3(0.1, 0.1, 0.2), vec3(0.5, 0.6, 0.7), sunIntensity);
-    vec3 ambient = baseColor * ambientColor * ambientStrength;
+    // Smooth ambient light that changes with time of day
+    float ambientStrength = 0.3 + sunIntensity * 0.3;
+    vec3 ambientColor = mix(vec3(0.05, 0.05, 0.15), vec3(0.5, 0.6, 0.7), sunIntensity);
+    vec3 ambient = ambientColor * ambientStrength;
 
-    // Enhanced shadow calculation with sun-based directional shadows
-    float shadow = 1.0;
+    // Combine all lighting
+    vec3 result = (ambient + sunLight + moonLight) * baseColor;
 
-    // Directional shadows based on sun
-    if (sunIntensity > 0.1) {
-        float facing = dot(normal, sunDir);
+    // Apply simple ambient occlusion
+    result *= ambientOcclusion;
 
-        // Strong directional shadow effect
-        // Faces away from sun (back faces) are dark
-        if (facing < -0.1) {
-            shadow = 0.3;  // Strong shadow for back faces
-        }
-        // Faces perpendicular to sun get graduated shadows
-        else if (facing < 0.3) {
-            shadow = mix(0.3, 0.6, (facing + 0.1) / 0.4);
-        }
-        // Faces angled toward sun
-        else if (facing < 0.7) {
-            shadow = mix(0.6, 0.9, (facing - 0.3) / 0.4);
-        }
-        // Faces directly facing sun are bright
-        else {
-            shadow = mix(0.9, 1.0, (facing - 0.7) / 0.3);
-        }
-
-        // Top faces get extra brightness during day
-        if (normal.y > 0.9) {
-            shadow = mix(shadow, 1.0, 0.3);
-        }
-
-        // Bottom faces are always darker
-        if (normal.y < -0.9) {
-            shadow *= 0.5;
-        }
-    } else {
-        // Night time - everything is darker
-        shadow = 0.5 + moonIntensity * 0.4;
-
-        // Top faces get moonlight
-        if (normal.y > 0.9 && moonIntensity > 0.1) {
-            shadow = mix(shadow, 0.9, moonIntensity * 0.5);
-        }
-    }
-
-    // Combine lighting
-    vec3 result = ambient + (sunLight + moonLight) * shadow;
-
-    // Apply ambient occlusion with stronger effect
-    float aoFactor = 0.4 + ambientOcclusion * 0.6;
-    result *= aoFactor;
-
-    return result * baseColor;
+    return result;
 }
 
 void main()

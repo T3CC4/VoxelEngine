@@ -9,7 +9,6 @@ public class VoxelMesh : IDisposable
     private int vao, vbo, ebo;
     private int vertexCount;
     private bool disposed = false;
-    private VoxelWorld? world;
 
     private void AddFace(List<float> vertices, List<uint> indices, ref uint currentIndex,
         int x, int y, int z, int face, Vector3 color, VoxelType voxelType)
@@ -20,8 +19,8 @@ public class VoxelMesh : IDisposable
 
         int isWater = (voxelType == VoxelType.Water) ? 1 : 0;
 
-        // Calculate per-vertex AO for smooth lighting
-        float[] aoValues = CalculateVertexAO(x, y, z, face);
+        // Simple AO value - all vertices get same value for now (realtime shadows will be in shader)
+        float ao = 1.0f;
 
         for (int i = 0; i < 4; i++)
         {
@@ -42,8 +41,8 @@ public class VoxelMesh : IDisposable
             vertices.Add(normal.Y);
             vertices.Add(normal.Z);
 
-            // Ambient Occlusion (per-vertex)
-            vertices.Add(aoValues[i]);
+            // Ambient Occlusion (simplified for realtime shadows)
+            vertices.Add(ao);
 
             // Is Water flag
             vertices.Add(isWater);
@@ -60,77 +59,7 @@ public class VoxelMesh : IDisposable
         currentIndex += 4;
     }
 
-    private float[] CalculateVertexAO(int x, int y, int z, int face)
-    {
-        // Get the face's tangent and bitangent vectors for checking neighboring blocks
-        Vector3Int normal = GetFaceDirection(face);
-        Vector3Int tangent, bitangent;
-
-        // Determine tangent and bitangent based on face normal
-        if (Math.Abs(normal.Y) > 0.5f)
-        {
-            // Top/Bottom face
-            tangent = new Vector3Int(1, 0, 0);
-            bitangent = new Vector3Int(0, 0, 1);
-        }
-        else if (Math.Abs(normal.X) > 0.5f)
-        {
-            // Left/Right face
-            tangent = new Vector3Int(0, 1, 0);
-            bitangent = new Vector3Int(0, 0, 1);
-        }
-        else
-        {
-            // Front/Back face
-            tangent = new Vector3Int(1, 0, 0);
-            bitangent = new Vector3Int(0, 1, 0);
-        }
-
-        float[] aoValues = new float[4];
-
-        // Check corners for each vertex of the quad
-        Vector3Int[] cornerOffsets = new[]
-        {
-            -tangent - bitangent,  // Vertex 0
-             tangent - bitangent,  // Vertex 1
-             tangent + bitangent,  // Vertex 2
-            -tangent + bitangent   // Vertex 3
-        };
-
-        for (int i = 0; i < 4; i++)
-        {
-            Vector3Int vertexPos = new Vector3Int(x, y, z) + normal; // Position at face
-            Vector3Int cornerOffset = cornerOffsets[i];
-
-            // Check 3 blocks around this vertex corner
-            Vector3Int side1 = vertexPos + new Vector3Int(cornerOffset.X, 0, 0);
-            Vector3Int side2 = vertexPos + new Vector3Int(0, cornerOffset.Y, 0);
-            Vector3Int side3 = vertexPos + new Vector3Int(0, 0, cornerOffset.Z);
-            Vector3Int corner = vertexPos + cornerOffset;
-
-            int solidCount = 0;
-            if (world != null)
-            {
-                if (IsSolidAt(side1)) solidCount++;
-                if (IsSolidAt(side2)) solidCount++;
-                if (IsSolidAt(side3)) solidCount++;
-                if (IsSolidAt(corner)) solidCount++;
-            }
-
-            // Convert solid count to AO value (more solid neighbors = darker)
-            aoValues[i] = 1.0f - (solidCount * 0.15f);
-        }
-
-        return aoValues;
-    }
-
-    public void BuildMesh(Chunk chunk, VoxelWorld worldRef)
-    {
-        world = worldRef;
-        BuildMeshInternal(chunk);
-    }
-
-    private void BuildMeshInternal(Chunk chunk)
+    public void BuildMesh(Chunk chunk, VoxelWorld world)
     {
         var vertices = new List<float>();
         var indices = new List<uint>();
@@ -154,12 +83,12 @@ public class VoxelMesh : IDisposable
                     for (int face = 0; face < 6; face++)
                     {
                         Vector3Int neighborPos = worldPos + GetFaceDirection(face);
-                        var neighbor = world!.GetVoxel(neighborPos);
+                        var neighbor = world.GetVoxel(neighborPos);
 
                         // Only render face if neighbor is empty or transparent
                         if (!neighbor.IsActive || neighbor.Type == VoxelType.Water)
                         {
-                            AddFace(vertices, indices, ref currentIndex, (int)worldPos.X, (int)worldPos.Y, (int)worldPos.Z, face, color, voxel.Type);
+                            AddFace(vertices, indices, ref currentIndex, x, y, z, face, color, voxel.Type);
                         }
                     }
                 }
@@ -168,13 +97,6 @@ public class VoxelMesh : IDisposable
 
         vertexCount = indices.Count;
         SetupMesh(vertices.ToArray(), indices.ToArray());
-    }
-
-    private bool IsSolidAt(Vector3Int pos)
-    {
-        if (world == null) return false;
-        var voxel = world.GetVoxel(pos);
-        return voxel.IsActive && voxel.Type != VoxelType.Air && voxel.Type != VoxelType.Water;
     }
 
     private Vector3Int GetFaceDirection(int face)
