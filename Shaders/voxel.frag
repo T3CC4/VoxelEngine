@@ -50,20 +50,21 @@ vec3 calculateLighting(vec3 normal, vec3 baseColor) {
     float sunHeight = sin(dayNightCycle * 3.14159265359 * 2.0);
     float sunIntensity = max(sunHeight, 0.0);
 
+    // Strong directional sun light for clear shadows
     vec3 sunColor = vec3(1.0, 0.95, 0.8);
-    vec3 sunLight = sunColor * sunDiffuse * sunIntensity;
+    vec3 sunLight = sunColor * sunDiffuse * sunIntensity * 1.3;
 
-    // Moon lighting
+    // Moon lighting (weaker)
     vec3 moonDir = normalize(-moonDirection);
     float moonDiffuse = max(dot(normal, moonDir), 0.0);
-    float moonIntensity = max(-sunHeight, 0.0) * 0.3; // Moon is opposite of sun
+    float moonIntensity = max(-sunHeight, 0.0) * 0.25;
 
     vec3 moonColor = vec3(0.6, 0.7, 1.0);
     vec3 moonLight = moonColor * moonDiffuse * moonIntensity;
 
-    // Smooth ambient light that changes with time of day
-    float ambientStrength = 0.3 + sunIntensity * 0.3;
-    vec3 ambientColor = mix(vec3(0.05, 0.05, 0.15), vec3(0.5, 0.6, 0.7), sunIntensity);
+    // Much lower ambient light to make shadows clearly visible
+    float ambientStrength = 0.12 + sunIntensity * 0.18;
+    vec3 ambientColor = mix(vec3(0.02, 0.02, 0.08), vec3(0.25, 0.3, 0.35), sunIntensity);
     vec3 ambient = ambientColor * ambientStrength;
 
     // Combine all lighting
