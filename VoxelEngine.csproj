@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Shaders\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Shaders\**\*" />
   </ItemGroup>
 
 </Project>
