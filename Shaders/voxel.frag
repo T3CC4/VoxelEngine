@@ -112,20 +112,28 @@ void main()
     // Water specific effects
     float alpha = 1.0;
     if (isWater == 1) {
-        // Water transparency
-        alpha = 0.7;
+        // Increased water transparency for better underwater visibility
+        alpha = 0.5;
 
-        // Water wave animation
+        // Animated flow texture effect - creates flowing appearance
+        float flowSpeed = 0.3;
+        float flowPattern1 = sin(fragPosition.x * 3.0 - time * flowSpeed) *
+                            cos(fragPosition.z * 3.0 - time * flowSpeed * 0.7);
+        float flowPattern2 = sin(fragPosition.x * 2.0 + fragPosition.z * 2.0 - time * flowSpeed * 1.3);
+
+        float flowEffect = (flowPattern1 * 0.5 + flowPattern2 * 0.3) * 0.15;
+
+        // Water wave animation with flow
         float wave = sin(fragPosition.x * 2.0 + time * 2.0) * 0.02 +
                      cos(fragPosition.z * 2.0 + time * 1.5) * 0.02;
 
-        // Add shimmer to water
+        // Add shimmer to water with flow effect
         vec3 viewDir = normalize(viewPos - fragPosition);
         float fresnel = pow(1.0 - max(dot(norm, viewDir), 0.0), 3.0);
         result += vec3(0.3, 0.4, 0.5) * fresnel * 0.3;
 
-        // Make water slightly brighter
-        result *= 1.2;
+        // Apply flow effect to brightness
+        result *= (1.2 + flowEffect);
     }
 
     // Fog calculation

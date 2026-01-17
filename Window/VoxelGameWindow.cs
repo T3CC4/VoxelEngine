@@ -642,6 +642,14 @@ public class VoxelGameWindow : GameWindow
         var hitPos = GetVoxelLookingAt(out bool hit, out _);
         if (hit)
         {
+            var voxel = world.GetVoxel(hitPos);
+
+            // Don't allow breaking water blocks
+            if (voxel.Type == VoxelType.Water)
+            {
+                return;
+            }
+
             world.SetVoxelType(hitPos, VoxelType.Air);
 
             if (currentStructure != null)
