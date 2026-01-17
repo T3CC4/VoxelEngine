@@ -183,12 +183,16 @@ public class WorldGenerator
 public class WorldGenConfig
 {
     public int Seed { get; set; } = 12345;
-    public float BaseHeight { get; set; } = 8.0f;
-    public float HeightVariation { get; set; } = 12.0f;
-    public float NoiseFrequency { get; set; } = 0.02f;
-    public int NoiseOctaves { get; set; } = 4;
+    public int MaxHeight { get; set; } = 312;         // World height (0-312)
+    public int SurfaceLevel { get; set; } = 156;      // Surface at halfway point
+    public float HeightVariation { get; set; } = 30.0f; // Terrain variation around surface
+    public float NoiseFrequency { get; set; } = 0.015f;
+    public int NoiseOctaves { get; set; } = 5;
     public float NoisePersistence { get; set; } = 0.5f;
-    public int WaterLevel { get; set; } = 12;
+    public int WaterLevel { get; set; } = 150;        // Water level just below surface
+
+    // Legacy properties for old world generator
+    public float BaseHeight { get; set; } = 8.0f;
 }
 
 public static class MathHelper

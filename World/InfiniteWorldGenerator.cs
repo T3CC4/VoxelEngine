@@ -31,20 +31,31 @@ public class InfiniteWorldGenerator
 
                 // Multi-octave noise for terrain with biome influence
                 float height = GetTerrainHeight(worldX, worldZ, biome);
-                int terrainHeight = (int)(config.BaseHeight + height * config.HeightVariation);
-                terrainHeight = Math.Clamp(terrainHeight, 1, Chunk.ChunkSize * 16 - 1);
+                int surfaceLevel = config.SurfaceLevel; // ~156
+                int terrainHeight = (int)(surfaceLevel + height * config.HeightVariation);
+                terrainHeight = Math.Clamp(terrainHeight, 1, config.MaxHeight - 1);
 
                 // Only generate blocks that are within this chunk's Y range
                 int minY = chunkWorldPos.Y;
                 int maxY = chunkWorldPos.Y + Chunk.ChunkSize;
 
-                for (int y = Math.Max(0, minY); y < Math.Min(terrainHeight, maxY); y++)
+                for (int y = Math.Max(0, minY); y < maxY; y++)
                 {
                     int localY = y - chunkWorldPos.Y;
                     if (localY < 0 || localY >= Chunk.ChunkSize) continue;
 
-                    VoxelType type = GetVoxelTypeForPosition(y, terrainHeight, biome, worldX, worldZ);
-                    chunk.SetVoxelType(x, localY, z, type);
+                    // Check if block should be carved out by cave
+                    bool isCave = IsCave(worldX, y, worldZ);
+
+                    if (!isCave)
+                    {
+                        // Place terrain block if below terrain height
+                        if (y < terrainHeight)
+                        {
+                            VoxelType type = GetVoxelTypeForPosition(y, terrainHeight, biome, worldX, worldZ);
+                            chunk.SetVoxelType(x, localY, z, type);
+                        }
+                    }
                 }
             }
         }
@@ -73,6 +84,89 @@ public class InfiniteWorldGenerator
                 }
             }
         }
+    }
+
+    private bool IsCave(int x, int y, int z)
+    {
+        // Only generate caves below surface level
+        if (y > config.SurfaceLevel)
+            return false;
+
+        // 3D Perlin noise for caves
+        float caveNoise1 = GetNoiseValue3D(x, y, z, 0.04f, config.Seed + 5000);
+        float caveNoise2 = GetNoiseValue3D(x, y, z, 0.06f, config.Seed + 6000);
+
+        // Combine noise layers for more interesting cave shapes
+        float caveValue = caveNoise1 * 0.6f + caveNoise2 * 0.4f;
+
+        // Threshold for cave carving - adjust this to control cave density
+        float caveThreshold = 0.45f;
+
+        // Make caves rarer near surface and near bedrock
+        float depthFactor = 1.0f;
+        if (y > config.SurfaceLevel - 20)
+        {
+            float distanceFromSurface = config.SurfaceLevel - y;
+            depthFactor = distanceFromSurface / 20.0f;
+        }
+        else if (y < 10)
+        {
+            depthFactor = y / 10.0f;
+        }
+
+        caveThreshold -= depthFactor * 0.1f;
+
+        return caveValue > caveThreshold;
+    }
+
+    private float GetNoiseValue3D(int x, int y, int z, float frequency, int seed)
+    {
+        float nx = x * frequency;
+        float ny = y * frequency;
+        float nz = z * frequency;
+
+        // Simple hash-based pseudo-noise in 3D
+        int ix = (int)Math.Floor(nx);
+        int iy = (int)Math.Floor(ny);
+        int iz = (int)Math.Floor(nz);
+
+        float fx = nx - ix;
+        float fy = ny - iy;
+        float fz = nz - iz;
+
+        // Smooth interpolation
+        float u = fx * fx * (3.0f - 2.0f * fx);
+        float v = fy * fy * (3.0f - 2.0f * fy);
+        float w = fz * fz * (3.0f - 2.0f * fz);
+
+        // Get corner values
+        float c000 = Hash3D(ix, iy, iz, seed);
+        float c100 = Hash3D(ix + 1, iy, iz, seed);
+        float c010 = Hash3D(ix, iy + 1, iz, seed);
+        float c110 = Hash3D(ix + 1, iy + 1, iz, seed);
+        float c001 = Hash3D(ix, iy, iz + 1, seed);
+        float c101 = Hash3D(ix + 1, iy, iz + 1, seed);
+        float c011 = Hash3D(ix, iy + 1, iz + 1, seed);
+        float c111 = Hash3D(ix + 1, iy + 1, iz + 1, seed);
+
+        // Trilinear interpolation
+        float x1 = Lerp(c000, c100, u);
+        float x2 = Lerp(c010, c110, u);
+        float x3 = Lerp(c001, c101, u);
+        float x4 = Lerp(c011, c111, u);
+
+        float y1 = Lerp(x1, x2, v);
+        float y2 = Lerp(x3, x4, v);
+
+        return Lerp(y1, y2, w);
+    }
+
+    private float Hash3D(int x, int y, int z, int seed)
+    {
+        int h = seed + x * 374761393 + y * 668265263 + z * 1274126177;
+        h = (h ^ (h >> 13)) * 1274126177;
+        h = h ^ (h >> 16);
+        return (h & 0x7FFFFFFF) / (float)0x7FFFFFFF * 2.0f - 1.0f;
     }
 
     private BiomeType GetBiome(int x, int z)
@@ -136,10 +230,10 @@ public class InfiniteWorldGenerator
         // Biome-specific height modifiers
         float heightMultiplier = biome switch
         {
-            BiomeType.Desert => 0.4f,      // Flat deserts
-            BiomeType.Plains => 0.6f,      // Rolling plains
-            BiomeType.Forest => 0.8f,      // Moderate hills
-            BiomeType.Jungle => 1.0f,      // Hills
+            BiomeType.Desert => 0.3f,      // Flat deserts
+            BiomeType.Plains => 0.5f,      // Rolling plains
+            BiomeType.Forest => 0.7f,      // Moderate hills
+            BiomeType.Jungle => 0.9f,      // Hills
             BiomeType.Tundra => 1.2f,      // Mountains
             _ => 1.0f
         };
