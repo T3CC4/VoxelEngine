@@ -60,16 +60,25 @@ public class WaterSimulation
         if (tickCounter % WaterTickInterval != 0)
             return;
 
+        // Only process water in the update queue (triggered by block changes)
+        if (updateQueue.Count == 0)
+            return;
+
         UpdateWater();
     }
 
     private void UpdateWater()
     {
-        // Collect water blocks that need updating
-        var waterToUpdate = new List<Vector3Int>(waterBlocks);
+        // Process only a limited number of water blocks per tick for performance
+        int processCount = Math.Min(updateQueue.Count, 50);
 
-        foreach (var waterPos in waterToUpdate)
+        for (int i = 0; i < processCount; i++)
         {
+            if (updateQueue.Count == 0)
+                break;
+
+            var waterPos = updateQueue.Dequeue();
+
             // Verify it's still water
             var voxel = world.GetVoxel(waterPos);
             if (voxel.Type != VoxelType.Water)
