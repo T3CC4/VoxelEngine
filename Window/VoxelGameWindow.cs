@@ -497,19 +497,21 @@ public class VoxelGameWindow : GameWindow
         if (voxelShader == null || skyboxRenderer == null) return;
 
         Matrix4 view, projection;
-        Vector3 viewPos;
+        Vector3 viewPos, viewFront;
 
         if (isEditorMode && editorCamera != null)
         {
             view = editorCamera.GetViewMatrix();
             projection = editorCamera.GetProjectionMatrix();
             viewPos = editorCamera.Position;
+            viewFront = editorCamera.Front;
         }
         else if (thirdPersonCamera != null)
         {
             view = thirdPersonCamera.GetViewMatrix();
             projection = thirdPersonCamera.GetProjectionMatrix();
             viewPos = thirdPersonCamera.Position;
+            viewFront = thirdPersonCamera.Front;
         }
         else
         {
@@ -522,6 +524,13 @@ public class VoxelGameWindow : GameWindow
 
         // Update occlusion culling
         occlusionCulling.UpdateCameraPosition(viewPos);
+
+        // Build loaded chunks dictionary for occlusion culling
+        var loadedChunks = new Dictionary<Vector3Int, bool>();
+        foreach (var chunk in world.GetAllChunks())
+        {
+            loadedChunks[chunk.Position] = true;
+        }
 
         // Render skybox first
         skyboxRenderer.Render(view, projection, dayNightCycle.GetSunDirection(),
@@ -562,7 +571,8 @@ public class VoxelGameWindow : GameWindow
             }
 
             // Occlusion culling - skip chunks hidden by terrain (optimized for performance)
-            if (!occlusionCulling.IsChunkVisibleWithOcclusion(chunk.Position, chunkWorldPos, viewPos, Chunk.ChunkSize))
+            if (!occlusionCulling.IsChunkVisibleWithOcclusion(chunk.Position, chunkWorldPos, viewPos,
+                                                               viewFront, Chunk.ChunkSize, loadedChunks))
             {
                 occlusionCulled++;
                 continue;
