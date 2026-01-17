@@ -25,12 +25,14 @@ public class VoxelGameWindow : GameWindow
     private StructureManager structureManager;
     private InfiniteWorldGenerator worldGenerator;
     private WorldGenConfig worldGenConfig;
+    private ChunkLoadingSystem chunkLoadingSystem;
     private ImGuiController? imguiController;
     private TickSystem tickSystem;
     private DayNightCycle dayNightCycle;
     private WaterSimulation? waterSimulation;
     private FrustumCulling frustumCulling;
     private float gameTime = 0.0f;
+    private bool initialLoadComplete = false;
 
     // Game mode
     private PlayerController? player;
@@ -98,6 +100,10 @@ public class VoxelGameWindow : GameWindow
         // Initialize infinite world generator
         worldGenerator = new InfiniteWorldGenerator(worldGenConfig);
 
+        // Initialize async chunk loading system
+        chunkLoadingSystem = new ChunkLoadingSystem(worldGenerator, world);
+        chunkLoadingSystem.Start();
+
         // Initialize water simulation
         waterSimulation = new WaterSimulation(world, tickSystem, worldGenConfig.WaterLevel);
 
@@ -140,8 +146,7 @@ public class VoxelGameWindow : GameWindow
             CaptureMouse();
         }
 
-        // Build initial meshes
-        RebuildAllMeshes();
+        // Meshes will be built asynchronously as chunks are generated
     }
 
     private void FindSpawnPosition()
@@ -165,10 +170,10 @@ public class VoxelGameWindow : GameWindow
         // Update chunks in the infinite world
         world.UpdateChunksAroundPosition(position);
 
-        // Generate terrain for all new chunks
-        foreach (var chunk in world.GetAllChunks())
+        // Queue all new chunks for async generation
+        foreach (var chunkPos in world.GetAllChunkPositions())
         {
-            worldGenerator.GenerateChunk(chunk, world);
+            chunkLoadingSystem.QueueChunkForGeneration(chunkPos);
         }
     }
 
@@ -183,22 +188,11 @@ public class VoxelGameWindow : GameWindow
         // Get new chunk positions after update
         var currentChunks = new HashSet<Vector3Int>(world.GetAllChunkPositions());
 
-        // Find chunks that were added
+        // Find chunks that were added - queue them for async generation
         var addedChunks = currentChunks.Except(existingChunks).ToList();
-
-        // Generate terrain for new chunks
         foreach (var chunkPos in addedChunks)
         {
-            var chunk = world.GetChunk(chunkPos);
-            if (chunk != null)
-            {
-                worldGenerator.GenerateChunk(chunk, world);
-
-                // Build mesh for the new chunk
-                var mesh = new VoxelMesh();
-                mesh.BuildMesh(chunk, world);
-                chunkMeshes[chunkPos] = mesh;
-            }
+            chunkLoadingSystem.QueueChunkForGeneration(chunkPos);
         }
 
         // Find chunks that were removed
@@ -215,6 +209,28 @@ public class VoxelGameWindow : GameWindow
         }
     }
 
+    private void ProcessChunkMeshing()
+    {
+        // Build meshes for chunks that have finished terrain generation
+        // Limit to 4 per frame to avoid stuttering
+        var chunksReady = chunkLoadingSystem.GetChunksReadyForMeshing(maxPerFrame: 4);
+
+        foreach (var chunk in chunksReady)
+        {
+            // Build mesh on main thread (OpenGL requirement)
+            var mesh = new VoxelMesh();
+            mesh.BuildMesh(chunk, world);
+            chunkMeshes[chunk.Position] = mesh;
+        }
+
+        // Mark initial load as complete once all chunks are loaded
+        if (!initialLoadComplete && !chunkLoadingSystem.IsLoading)
+        {
+            initialLoadComplete = true;
+            Console.WriteLine("Initial chunk loading complete!");
+        }
+    }
+
 
     protected override void OnUpdateFrame(FrameEventArgs args)
     {
@@ -224,6 +240,9 @@ public class VoxelGameWindow : GameWindow
 
         // Update game time
         gameTime += deltaTime;
+
+        // Process chunks ready for meshing (limit to avoid frame drops)
+        ProcessChunkMeshing();
 
         // Update tick system
         tickSystem.Update(deltaTime);
@@ -282,6 +301,12 @@ public class VoxelGameWindow : GameWindow
             worldGenConfig = WorldGenConfig.LoadFromFile();
             worldGenerator = new InfiniteWorldGenerator(worldGenConfig);
 
+            // Stop current loading system
+            chunkLoadingSystem.Stop();
+
+            // Clear loading queues
+            chunkLoadingSystem.Clear();
+
             // Clear and regenerate current chunks
             foreach (var mesh in chunkMeshes.Values)
             {
@@ -289,13 +314,17 @@ public class VoxelGameWindow : GameWindow
             }
             chunkMeshes.Clear();
 
+            // Restart loading system with new generator
+            chunkLoadingSystem = new ChunkLoadingSystem(worldGenerator, world);
+            chunkLoadingSystem.Start();
+
             if (editorCamera != null)
             {
                 GenerateChunksAroundPosition(editorCamera.Position);
             }
 
             waterSimulation = new WaterSimulation(world, tickSystem, worldGenConfig.WaterLevel);
-            RebuildAllMeshes();
+            initialLoadComplete = false;
         }
     }
 
@@ -535,6 +564,20 @@ public class VoxelGameWindow : GameWindow
         ImGui.Text($"Camera: {editorCamera.Position:F1}");
         ImGui.Text($"Chunks Loaded: {world.GetAllChunks().Count()}");
         ImGui.Text($"Chunks Meshed: {chunkMeshes.Count}");
+
+        // Loading status
+        if (chunkLoadingSystem.IsLoading)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(1, 1, 0, 1), "LOADING CHUNKS...");
+            ImGui.Text($"Generating: {chunkLoadingSystem.ChunksGenerating}");
+            ImGui.Text($"Queue: {chunkLoadingSystem.ChunksInGenerationQueue}");
+            ImGui.Text($"Meshing: {chunkLoadingSystem.ChunksInMeshQueue}");
+        }
+        else if (initialLoadComplete)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(0, 1, 0, 1), "Ready");
+        }
+
         ImGui.Separator();
 
         // View Distance Control
@@ -858,6 +901,9 @@ public class VoxelGameWindow : GameWindow
     protected override void OnUnload()
     {
         base.OnUnload();
+
+        // Stop chunk loading thread
+        chunkLoadingSystem?.Stop();
 
         voxelShader?.Dispose();
         skyboxRenderer?.Dispose();
