@@ -9,7 +9,10 @@ public class InfiniteVoxelWorld
     private readonly int verticalChunks;
     private Vector3Int lastCenterChunk = new Vector3Int(int.MaxValue, 0, int.MaxValue);
 
-    public InfiniteVoxelWorld(int renderDistance = 8, int verticalChunks = 4)
+    public int RenderDistance => renderDistance;
+    public int VerticalChunks => verticalChunks;
+
+    public InfiniteVoxelWorld(int renderDistance = 10, int verticalChunks = 10)
     {
         this.renderDistance = renderDistance;
         this.verticalChunks = verticalChunks;
