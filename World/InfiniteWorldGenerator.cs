@@ -1,5 +1,6 @@
 using OpenTK.Mathematics;
 using VoxelEngine.Core;
+using VoxelEngine.Structures;
 
 namespace VoxelEngine.World;
 
@@ -7,11 +8,13 @@ public class InfiniteWorldGenerator
 {
     private WorldGenConfig config;
     private Random rand;
+    private StructureManager? structureManager;
 
-    public InfiniteWorldGenerator(WorldGenConfig config)
+    public InfiniteWorldGenerator(WorldGenConfig config, StructureManager? structureManager = null)
     {
         this.config = config;
         this.rand = new Random(config.Seed);
+        this.structureManager = structureManager;
     }
 
     public void GenerateChunk(Chunk chunk, InfiniteVoxelWorld world)
@@ -84,6 +87,79 @@ public class InfiniteWorldGenerator
                 }
             }
         }
+
+        // Third pass: Generate structures (only in surface chunks)
+        if (structureManager != null && chunk.Position.Y >= 3 && chunk.Position.Y <= 6)
+        {
+            GenerateStructuresInChunk(chunk, world, chunkWorldPos);
+        }
+    }
+
+    private void GenerateStructuresInChunk(Chunk chunk, InfiniteVoxelWorld world, Vector3Int chunkWorldPos)
+    {
+        // Use chunk position as seed for deterministic placement
+        int chunkSeed = HashChunkPosition(chunk.Position);
+        Random chunkRand = new Random(config.Seed + chunkSeed);
+
+        // Try to place structures based on configured density
+        if (chunkRand.NextDouble() < config.StructureDensity)
+        {
+            // Random position within chunk
+            int localX = chunkRand.Next(4, Chunk.ChunkSize - 4);
+            int localZ = chunkRand.Next(4, Chunk.ChunkSize - 4);
+
+            int worldX = chunkWorldPos.X + localX;
+            int worldZ = chunkWorldPos.Z + localZ;
+
+            // Get biome at this position
+            BiomeType biome = GetBiome(worldX, worldZ);
+
+            // Select structure based on biome
+            Structure? structure = SelectStructureForBiome(biome, chunkRand);
+
+            if (structure != null)
+            {
+                // Find ground level for placement (search from chunk top)
+                int searchStartY = (chunk.Position.Y + 1) * Chunk.ChunkSize;
+                Vector3Int placementPos = new Vector3Int(worldX, searchStartY, worldZ);
+
+                // Use PlaceOnGround to automatically find terrain and place
+                structure.PlaceOnGround(world, placementPos, maxSearchDown: Chunk.ChunkSize * 2);
+            }
+        }
+    }
+
+    private Structure? SelectStructureForBiome(BiomeType biome, Random random)
+    {
+        if (structureManager == null)
+            return null;
+
+        // Select structure category based on biome
+        var structures = biome switch
+        {
+            BiomeType.Forest or BiomeType.Jungle => structureManager.AmbientStructures, // Trees
+            BiomeType.Plains => random.NextDouble() > 0.5
+                ? structureManager.ArchitectureStructures  // Houses
+                : structureManager.AmbientStructures,      // Trees
+            BiomeType.Desert => structureManager.ArchitectureStructures, // Desert buildings
+            BiomeType.Tundra => random.NextDouble() > 0.7
+                ? structureManager.ArchitectureStructures  // Rare structures
+                : null,
+            _ => null
+        };
+
+        if (structures != null && structures.Count > 0)
+        {
+            return structures[random.Next(structures.Count)];
+        }
+
+        return null;
+    }
+
+    private int HashChunkPosition(Vector3Int pos)
+    {
+        // Simple hash function for chunk position
+        return pos.X * 73856093 ^ pos.Y * 19349663 ^ pos.Z * 83492791;
     }
 
     private bool IsCave(int x, int y, int z)
