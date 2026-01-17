@@ -31,8 +31,15 @@ public class VoxelGameWindow : GameWindow
     private DayNightCycle dayNightCycle;
     private WaterSimulation? waterSimulation;
     private FrustumCulling frustumCulling;
+    private OcclusionCulling occlusionCulling;
     private float gameTime = 0.0f;
     private bool initialLoadComplete = false;
+
+    // Render stats
+    private int lastRenderedChunks = 0;
+    private int lastTotalChunks = 0;
+    private int lastFrustumCulled = 0;
+    private int lastOcclusionCulled = 0;
 
     // Game mode
     private PlayerController? player;
@@ -90,6 +97,9 @@ public class VoxelGameWindow : GameWindow
 
         // Initialize frustum culling
         frustumCulling = new FrustumCulling();
+
+        // Initialize occlusion culling
+        occlusionCulling = new OcclusionCulling();
 
         // Load world generation config
         worldGenConfig = WorldGenConfig.LoadFromFile();
@@ -506,6 +516,9 @@ public class VoxelGameWindow : GameWindow
         Matrix4 viewProjection = view * projection;
         frustumCulling.UpdateFrustum(viewProjection);
 
+        // Update occlusion culling
+        occlusionCulling.UpdateCameraPosition(viewPos);
+
         // Render skybox first
         skyboxRenderer.Render(view, projection, dayNightCycle.GetSunDirection(),
                              dayNightCycle.GetMoonDirection(), dayNightCycle.CurrentTime);
@@ -524,6 +537,8 @@ public class VoxelGameWindow : GameWindow
 
         int renderedChunks = 0;
         int totalChunks = 0;
+        int frustumCulled = 0;
+        int occlusionCulled = 0;
 
         foreach (var chunk in world.GetAllChunks())
         {
@@ -538,6 +553,15 @@ public class VoxelGameWindow : GameWindow
             // Frustum culling - skip chunks outside view frustum
             if (!frustumCulling.IsChunkVisible(chunkWorldPos, Chunk.ChunkSize))
             {
+                frustumCulled++;
+                continue;
+            }
+
+            // Occlusion culling - skip chunks hidden by other chunks
+            if (!occlusionCulling.IsChunkVisibleWithOcclusion(chunk.Position, chunkWorldPos, viewPos,
+                                                               new Dictionary<Vector3Int, bool>(), Chunk.ChunkSize))
+            {
+                occlusionCulled++;
                 continue;
             }
 
@@ -551,6 +575,12 @@ public class VoxelGameWindow : GameWindow
                 mesh.Render();
             }
         }
+
+        // Store stats for UI
+        lastRenderedChunks = renderedChunks;
+        lastTotalChunks = totalChunks;
+        lastFrustumCulled = frustumCulled;
+        lastOcclusionCulled = occlusionCulled;
     }
 
     private void RenderEditorUI()
@@ -562,8 +592,16 @@ public class VoxelGameWindow : GameWindow
         ImGui.Text($"FPS: {1.0 / ImGui.GetIO().DeltaTime:F0}");
         ImGui.Text($"Tick: {tickSystem.CurrentTick} ({tickSystem.TickRate} TPS)");
         ImGui.Text($"Camera: {editorCamera.Position:F1}");
-        ImGui.Text($"Chunks Loaded: {world.GetAllChunks().Count()}");
-        ImGui.Text($"Chunks Meshed: {chunkMeshes.Count}");
+        ImGui.Separator();
+
+        // Chunk stats
+        ImGui.Text($"Chunks Loaded: {lastTotalChunks}");
+        ImGui.Text($"Chunks Rendered: {lastRenderedChunks}");
+        ImGui.Text($"Frustum Culled: {lastFrustumCulled}");
+        ImGui.Text($"Occlusion Culled: {lastOcclusionCulled}");
+        float cullPercentage = lastTotalChunks > 0 ? ((lastFrustumCulled + lastOcclusionCulled) * 100.0f / lastTotalChunks) : 0;
+        ImGui.Text($"Culling Efficiency: {cullPercentage:F1}%");
+        ImGui.Separator();
 
         // Loading status
         if (chunkLoadingSystem.IsLoading)
