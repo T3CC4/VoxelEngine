@@ -372,7 +372,7 @@ void main()
             float z = miniVoxel.Position.Z * cellSize;
 
             // Create a small cube for each mini-voxel
-            AddCube(vertices, x, y, z, cellSize, miniVoxel.Color);
+            AddCube(vertices, x, y, z, cellSize, miniVoxel.ColorVector);
         }
 
         if (vertices.Count == 0)

@@ -41,12 +41,18 @@ public class Decoration
         Resolution = resolution;
     }
 
-    public void AddMiniVoxel(Vector3Int localPosition, Vector3 color)
+    public void AddMiniVoxel(Vector3Int localPosition, OpenTK.Mathematics.Vector3 color)
     {
         // Remove existing mini-voxel at this position if any
         MiniVoxels.RemoveAll(v => v.Position == localPosition);
 
-        MiniVoxels.Add(new MiniVoxelData { Position = localPosition, Color = color });
+        MiniVoxels.Add(new MiniVoxelData
+        {
+            Position = localPosition,
+            R = color.X,
+            G = color.Y,
+            B = color.Z
+        });
     }
 
     public void RemoveMiniVoxel(Vector3Int localPosition)
@@ -110,5 +116,14 @@ public class Decoration
 public class MiniVoxelData
 {
     public Vector3Int Position { get; set; }
-    public Vector3 Color { get; set; }
+    public float R { get; set; }
+    public float G { get; set; }
+    public float B { get; set; }
+
+    [JsonIgnore]
+    public OpenTK.Mathematics.Vector3 ColorVector
+    {
+        get => new OpenTK.Mathematics.Vector3(R, G, B);
+        set { R = value.X; G = value.Y; B = value.Z; }
+    }
 }
