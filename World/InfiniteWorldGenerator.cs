@@ -1,6 +1,7 @@
 using OpenTK.Mathematics;
 using VoxelEngine.Core;
 using VoxelEngine.Structures;
+using VoxelEngine.Decorations;
 
 namespace VoxelEngine.World;
 
@@ -9,12 +10,20 @@ public class InfiniteWorldGenerator
     private WorldGenConfig config;
     private Random rand;
     private StructureManager? structureManager;
+    private WorldBasedStructurePlacer? structurePlacer;
+    private DecorationManager? decorationManager;
 
-    public InfiniteWorldGenerator(WorldGenConfig config, StructureManager? structureManager = null)
+    public InfiniteWorldGenerator(WorldGenConfig config, StructureManager? structureManager = null, DecorationManager? decorationManager = null)
     {
         this.config = config;
         this.rand = new Random(config.Seed);
         this.structureManager = structureManager;
+        this.decorationManager = decorationManager;
+
+        if (structureManager != null)
+        {
+            this.structurePlacer = new WorldBasedStructurePlacer(config.Seed, structureManager);
+        }
     }
 
     public void GenerateChunk(Chunk chunk, InfiniteVoxelWorld world)
@@ -89,71 +98,118 @@ public class InfiniteWorldGenerator
         }
 
         // Third pass: Generate structures (only in surface chunks)
-        if (structureManager != null && chunk.Position.Y >= 3 && chunk.Position.Y <= 6)
+        if (structurePlacer != null && chunk.Position.Y >= 3 && chunk.Position.Y <= 6)
         {
             GenerateStructuresInChunk(chunk, world, chunkWorldPos);
+        }
+
+        // Fourth pass: Generate decorations (only in surface chunks)
+        if (decorationManager != null && chunk.Position.Y >= 3 && chunk.Position.Y <= 6)
+        {
+            GenerateDecorationsInChunk(chunk, world, chunkWorldPos);
         }
     }
 
     private void GenerateStructuresInChunk(Chunk chunk, InfiniteVoxelWorld world, Vector3Int chunkWorldPos)
     {
-        // Use chunk position as seed for deterministic placement
-        int chunkSeed = HashChunkPosition(chunk.Position);
-        Random chunkRand = new Random(config.Seed + chunkSeed);
+        // Use world-based structure placer for consistent structure positions
+        var placements = structurePlacer!.GetStructuresForChunk(chunk.Position);
 
-        // Try to place structures based on configured density
-        if (chunkRand.NextDouble() < config.StructureDensity)
+        foreach (var placement in placements)
         {
-            // Random position within chunk
-            int localX = chunkRand.Next(4, Chunk.ChunkSize - 4);
-            int localZ = chunkRand.Next(4, Chunk.ChunkSize - 4);
+            // Find ground level for placement (search from chunk top)
+            int searchStartY = (chunk.Position.Y + 1) * Chunk.ChunkSize;
+            Vector3Int placementPos = new Vector3Int(
+                placement.WorldPosition.X,
+                searchStartY,
+                placement.WorldPosition.Z
+            );
 
-            int worldX = chunkWorldPos.X + localX;
-            int worldZ = chunkWorldPos.Z + localZ;
+            // Use PlaceOnGround to automatically find terrain and place
+            placement.Structure.PlaceOnGround(world, placementPos, maxSearchDown: Chunk.ChunkSize * 2);
+        }
+    }
 
-            // Get biome at this position
-            BiomeType biome = GetBiome(worldX, worldZ);
-
-            // Select structure based on biome
-            Structure? structure = SelectStructureForBiome(biome, chunkRand);
-
-            if (structure != null)
+    private void GenerateDecorationsInChunk(Chunk chunk, InfiniteVoxelWorld world, Vector3Int chunkWorldPos)
+    {
+        // Generate decorations on surface blocks
+        for (int x = 0; x < Chunk.ChunkSize; x++)
+        {
+            for (int z = 0; z < Chunk.ChunkSize; z++)
             {
-                // Find ground level for placement (search from chunk top)
-                int searchStartY = (chunk.Position.Y + 1) * Chunk.ChunkSize;
-                Vector3Int placementPos = new Vector3Int(worldX, searchStartY, worldZ);
+                int worldX = chunkWorldPos.X + x;
+                int worldZ = chunkWorldPos.Z + z;
 
-                // Use PlaceOnGround to automatically find terrain and place
-                structure.PlaceOnGround(world, placementPos, maxSearchDown: Chunk.ChunkSize * 2);
+                // Get biome at this position
+                BiomeType biome = GetBiome(worldX, worldZ);
+
+                // Get eligible decorations for this biome
+                var eligibleDecorations = decorationManager!.GetDecorationsForBiome(biome);
+                if (eligibleDecorations.Count == 0)
+                    continue;
+
+                // Find the top solid block in this column within the chunk
+                for (int y = Chunk.ChunkSize - 1; y >= 0; y--)
+                {
+                    var voxel = chunk.GetVoxel(x, y, z);
+
+                    // Check if this is a solid block
+                    if (voxel.IsActive && voxel.Type.IsSolid() && voxel.Type != VoxelType.Water)
+                    {
+                        // This is the ground block
+                        VoxelType groundBlock = voxel.Type;
+
+                        // Check if the block above is air (space for decoration)
+                        int worldY = chunkWorldPos.Y + y;
+                        Vector3Int abovePos = new Vector3Int(worldX, worldY + 1, worldZ);
+                        var aboveVoxel = world.GetVoxel(abovePos);
+
+                        if (!aboveVoxel.IsActive || aboveVoxel.Type == VoxelType.Air)
+                        {
+                            // Try to place a decoration
+                            TryPlaceDecoration(world, abovePos, groundBlock, biome, eligibleDecorations, worldX, worldZ);
+                        }
+
+                        // Only check the topmost solid block
+                        break;
+                    }
+                }
             }
         }
     }
 
-    private Structure? SelectStructureForBiome(BiomeType biome, Random random)
+    private void TryPlaceDecoration(IVoxelWorld world, Vector3Int position, VoxelType groundBlock,
+                                     BiomeType biome, List<Decoration> eligibleDecorations,
+                                     int worldX, int worldZ)
     {
-        if (structureManager == null)
-            return null;
+        // Use deterministic random based on world position
+        int seed = HashPosition(worldX, worldZ);
+        Random random = new Random(config.Seed + seed);
 
-        // Select structure category based on biome
-        var structures = biome switch
+        // Try each eligible decoration
+        foreach (var decoration in eligibleDecorations)
         {
-            BiomeType.Forest or BiomeType.Jungle => structureManager.AmbientStructures, // Trees
-            BiomeType.Plains => random.NextDouble() > 0.5
-                ? structureManager.ArchitectureStructures  // Houses
-                : structureManager.AmbientStructures,      // Trees
-            BiomeType.Desert => structureManager.ArchitectureStructures, // Desert buildings
-            BiomeType.Tundra => random.NextDouble() > 0.7
-                ? structureManager.ArchitectureStructures  // Rare structures
-                : null,
-            _ => null
-        };
+            // Check if decoration can spawn on this ground block
+            if (!decoration.CanSpawnOnGround(groundBlock))
+                continue;
 
-        if (structures != null && structures.Count > 0)
-        {
-            return structures[random.Next(structures.Count)];
+            // Check spawn density
+            if (random.NextDouble() > decoration.Density)
+                continue;
+
+            // For now, we'll place a placeholder block (Leaves for decorations)
+            // In a full implementation, this would store decoration data for rendering mini-voxels
+            // TODO: Implement proper mini-voxel rendering system
+            world.SetVoxelType(position, VoxelType.Leaves);
+
+            // Only place one decoration per location
+            return;
         }
+    }
 
-        return null;
+    private int HashPosition(int x, int z)
+    {
+        return x * 374761393 + z * 668265263;
     }
 
     private int HashChunkPosition(Vector3Int pos)
@@ -245,13 +301,19 @@ public class InfiniteWorldGenerator
         return (h & 0x7FFFFFFF) / (float)0x7FFFFFFF * 2.0f - 1.0f;
     }
 
-    private BiomeType GetBiome(int x, int z)
+    public BiomeType GetBiome(int x, int z)
     {
         // Use very low frequency noise for biomes (large regions)
         float temperature = GetNoiseValue(x, z, 0.002f, config.Seed);
         float moisture = GetNoiseValue(x, z, 0.002f, config.Seed + 1000);
 
+        return GetBiomeFromClimate(temperature, moisture);
+    }
+
+    private BiomeType GetBiomeFromClimate(float temperature, float moisture)
+    {
         // Biome selection based on temperature and moisture
+        // Using smoother transitions with multiple climate zones
         if (temperature > 0.6f)
         {
             return moisture > 0.5f ? BiomeType.Jungle : BiomeType.Desert;
@@ -264,6 +326,58 @@ public class InfiniteWorldGenerator
         {
             return moisture > 0.3f ? BiomeType.Forest : BiomeType.Plains;
         }
+    }
+
+    private Dictionary<BiomeType, float> GetBiomeInfluences(int x, int z)
+    {
+        // Sample biomes in a small radius and calculate influence weights
+        // This creates smooth transitions between biomes
+        var influences = new Dictionary<BiomeType, float>();
+
+        // Sample radius for biome blending
+        int sampleRadius = 8;
+        int sampleCount = 0;
+
+        for (int dx = -sampleRadius; dx <= sampleRadius; dx += 4)
+        {
+            for (int dz = -sampleRadius; dz <= sampleRadius; dz += 4)
+            {
+                // Calculate distance-based weight (closer samples have more influence)
+                float distance = MathF.Sqrt(dx * dx + dz * dz);
+                float weight = Math.Max(0, 1.0f - distance / sampleRadius);
+
+                if (weight > 0)
+                {
+                    // Get biome at sample position
+                    float temperature = GetNoiseValue(x + dx, z + dz, 0.002f, config.Seed);
+                    float moisture = GetNoiseValue(x + dx, z + dz, 0.002f, config.Seed + 1000);
+                    BiomeType biome = GetBiomeFromClimate(temperature, moisture);
+
+                    // Add weighted influence
+                    if (!influences.ContainsKey(biome))
+                        influences[biome] = 0;
+
+                    influences[biome] += weight;
+                    sampleCount++;
+                }
+            }
+        }
+
+        // Normalize influences
+        float totalInfluence = influences.Values.Sum();
+        if (totalInfluence > 0)
+        {
+            var normalizedInfluences = new Dictionary<BiomeType, float>();
+            foreach (var kvp in influences)
+            {
+                normalizedInfluences[kvp.Key] = kvp.Value / totalInfluence;
+            }
+            return normalizedInfluences;
+        }
+
+        // Fallback to single biome
+        var fallbackBiome = GetBiome(x, z);
+        return new Dictionary<BiomeType, float> { { fallbackBiome, 1.0f } };
     }
 
     private VoxelType GetVoxelTypeForPosition(int y, int terrainHeight, BiomeType biome, int worldX, int worldZ)
@@ -303,8 +417,23 @@ public class InfiniteWorldGenerator
     {
         float baseNoise = GetMultiOctaveNoise(x, z);
 
-        // Biome-specific height modifiers
-        float heightMultiplier = biome switch
+        // Use biome blending for smoother transitions
+        var biomeInfluences = GetBiomeInfluences(x, z);
+
+        // Calculate blended height multiplier
+        float blendedMultiplier = 0f;
+        foreach (var kvp in biomeInfluences)
+        {
+            float biomeMultiplier = GetBiomeHeightMultiplier(kvp.Key);
+            blendedMultiplier += biomeMultiplier * kvp.Value;
+        }
+
+        return baseNoise * blendedMultiplier;
+    }
+
+    private float GetBiomeHeightMultiplier(BiomeType biome)
+    {
+        return biome switch
         {
             BiomeType.Desert => 0.3f,      // Flat deserts
             BiomeType.Plains => 0.5f,      // Rolling plains
@@ -313,8 +442,6 @@ public class InfiniteWorldGenerator
             BiomeType.Tundra => 1.2f,      // Mountains
             _ => 1.0f
         };
-
-        return baseNoise * heightMultiplier;
     }
 
     private float GetMultiOctaveNoise(int x, int z)
