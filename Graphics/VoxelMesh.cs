@@ -59,7 +59,7 @@ public class VoxelMesh : IDisposable
         currentIndex += 4;
     }
 
-    public void BuildMesh(Chunk chunk, VoxelWorld world)
+    public void BuildMesh(Chunk chunk, IVoxelWorld world)
     {
         var vertices = new List<float>();
         var indices = new List<uint>();

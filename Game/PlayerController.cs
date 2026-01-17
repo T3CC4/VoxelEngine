@@ -18,9 +18,9 @@ public class PlayerController
     private const float PlayerRadius = 0.3f;
 
     private bool isGrounded = false;
-    private VoxelWorld world;
+    private IVoxelWorld world;
 
-    public PlayerController(Vector3 startPosition, Camera camera, VoxelWorld world)
+    public PlayerController(Vector3 startPosition, Camera camera, IVoxelWorld world)
     {
         Position = startPosition;
         Camera = camera;

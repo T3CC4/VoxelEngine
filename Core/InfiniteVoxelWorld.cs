@@ -2,7 +2,7 @@ using OpenTK.Mathematics;
 
 namespace VoxelEngine.Core;
 
-public class InfiniteVoxelWorld
+public class InfiniteVoxelWorld : IVoxelWorld
 {
     private readonly Dictionary<Vector3Int, Chunk> chunks = new();
     private readonly int renderDistance;

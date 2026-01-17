@@ -58,7 +58,7 @@ public class Structure
         return voxel?.Type ?? VoxelType.Air;
     }
 
-    public void PlaceInWorld(VoxelWorld world, Vector3Int worldPosition)
+    public void PlaceInWorld(IVoxelWorld world, Vector3Int worldPosition)
     {
         foreach (var voxel in Voxels)
         {

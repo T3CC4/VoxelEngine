@@ -193,6 +193,36 @@ public class WorldGenConfig
 
     // Legacy properties for old world generator
     public float BaseHeight { get; set; } = 8.0f;
+
+    public static WorldGenConfig LoadFromFile(string path = "worldgen_config.json")
+    {
+        if (File.Exists(path))
+        {
+            try
+            {
+                string json = File.ReadAllText(path);
+                return JsonSerializer.Deserialize<WorldGenConfig>(json) ?? new WorldGenConfig();
+            }
+            catch
+            {
+                var config = new WorldGenConfig();
+                config.SaveToFile(path);
+                return config;
+            }
+        }
+        else
+        {
+            var config = new WorldGenConfig();
+            config.SaveToFile(path);
+            return config;
+        }
+    }
+
+    public void SaveToFile(string path = "worldgen_config.json")
+    {
+        string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(path, json);
+    }
 }
 
 public static class MathHelper
