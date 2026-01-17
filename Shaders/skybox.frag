@@ -100,7 +100,7 @@ vec3 renderMoon(vec3 viewDir) {
     return (moonDisk + moonGlow) * moonColor * moonIntensity * 0.8;
 }
 
-vec3 renderStars(vec3 viewDir) {
+vec3 renderStars(vec3 viewDir, vec3 moonDir) {
     // Simple procedural stars
     float sunHeight = sin(dayNightCycle * 3.14159265359 * 2.0);
     float starIntensity = max(-sunHeight - 0.3, 0.0);
@@ -109,22 +109,30 @@ vec3 renderStars(vec3 viewDir) {
         return vec3(0.0);
     }
 
-    // Use view direction to create star pattern
-    vec3 stars = vec3(0.0);
+    // Rotate view direction to align with moon (stars rotate with moon)
+    // Create a simple rotation based on moon direction
+    vec3 rotatedView = viewDir;
+
+    // Use moon direction to offset the star field
+    vec3 offset = moonDir * dayNightCycle * 10.0;
+    vec3 p = normalize(rotatedView + offset * 0.1) * 100.0;
+
     float starField = 0.0;
 
-    // Create star pattern using noise-like function
-    vec3 p = normalize(viewDir) * 100.0;
-    for (int i = 0; i < 3; i++) {
-        vec3 q = fract(p * 0.3 + float(i) * 1.234) - 0.5;
-        float d = length(q);
-        float brightness = smoothstep(0.45, 0.25, d);
-        starField += brightness;
-        p = p * 2.0 + 0.1;
-    }
+    // Fewer, brighter stars - reduced from 3 iterations to 1
+    vec3 q = fract(p * 0.15) - 0.5; // Lower frequency = fewer stars
+    float d = length(q);
+    float brightness = smoothstep(0.48, 0.35, d); // Tighter threshold = fewer stars
+    starField = brightness;
 
-    stars = vec3(starField) * starIntensity;
-    return stars * 0.5;
+    // Add a few larger stars
+    vec3 q2 = fract(p * 0.08 + vec3(0.5)) - 0.5;
+    float d2 = length(q2);
+    float brightness2 = smoothstep(0.49, 0.4, d2) * 1.5;
+    starField += brightness2;
+
+    vec3 stars = vec3(starField) * starIntensity;
+    return stars * 0.8; // Slightly brighter individual stars
 }
 
 void main()
@@ -137,7 +145,10 @@ void main()
     // Add celestial bodies
     skyColor += renderSun(viewDir);
     skyColor += renderMoon(viewDir);
-    skyColor += renderStars(viewDir);
+
+    // Stars rotate with moon
+    vec3 moonDir = normalize(-moonDirection);
+    skyColor += renderStars(viewDir, moonDir);
 
     FragColor = vec4(skyColor, 1.0);
 }
