@@ -100,41 +100,46 @@ vec3 renderMoon(vec3 viewDir) {
     return (moonDisk + moonGlow) * moonColor * moonIntensity * 0.8;
 }
 
+float hash31(vec3 p) {
+    p = fract(p * 0.1031);
+    p += dot(p, p.yzx + 33.33);
+    return fract((p.x + p.y) * p.z);
+}
+
 vec3 renderStars(vec3 viewDir, vec3 moonDir) {
-    // Simple procedural stars
-    float sunHeight = sin(dayNightCycle * 3.14159265359 * 2.0);
-    float starIntensity = max(-sunHeight - 0.3, 0.0);
+    float sunHeight = sin(dayNightCycle * 6.28318530718);
+    float starIntensity = max(-sunHeight - 0.2, 0.0);
 
-    if (starIntensity <= 0.0) {
-        return vec3(0.0);
-    }
+    if (starIntensity <= 0.0) return vec3(0.0);
 
-    // Use moon direction to offset the star field
-    vec3 offset = moonDir * dayNightCycle * 10.0;
-    vec3 p = normalize(viewDir + offset * 0.1) * 100.0;
+    // ---- Moon occlusion (MATCH moon disk exactly) ----
+    float moonDot = dot(viewDir, moonDir);
 
-    float starField = 0.0;
+    // These values MUST match renderMoon()
+    float moonMask = smoothstep(
+        0.9996,   // fully blocked
+        0.9992,   // fully visible
+        moonDot
+    );
 
-    // Much smaller stars - very tight threshold
-    vec3 q = fract(p * 0.2) - 0.5; // Adjust frequency
-    float d = length(q);
+    // ---- Star field ----
+    vec3 dir = normalize(viewDir + moonDir * -0.02);
+    vec3 p = dir * 600.0;
 
-    // Create time-based twinkling effect
-    float twinkle = sin(d * 50.0 + dayNightCycle * 20.0) * 0.3 + 0.7;
+    vec3 cell = floor(p);
+    vec3 local = fract(p);
 
-    // Very tight threshold for tiny stars
-    float brightness = smoothstep(0.498, 0.485, d) * twinkle;
-    starField = brightness;
+    float rnd = hash31(cell);
 
-    // Add a few even tinier stars with different twinkling
-    vec3 q2 = fract(p * 0.12 + vec3(0.5)) - 0.5;
-    float d2 = length(q2);
-    float twinkle2 = sin(d2 * 40.0 + dayNightCycle * 25.0 + 1.5) * 0.4 + 0.6;
-    float brightness2 = smoothstep(0.499, 0.49, d2) * twinkle2 * 1.2;
-    starField += brightness2;
+    float starChance = step(0.9975, rnd);
+    float starSharp = step(0.02, length(local - 0.5));
 
-    vec3 stars = vec3(starField) * starIntensity;
-    return stars * 1.0;
+    float twinkle = sin(dayNightCycle * 20.0 + rnd * 6.2831) * 0.25 + 0.75;
+
+    float star = starChance * starSharp * twinkle;
+    star *= mix(0.5, 1.5, rnd);
+
+    return vec3(star) * starIntensity * moonMask;
 }
 
 void main()
