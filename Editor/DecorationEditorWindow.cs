@@ -25,7 +25,7 @@ public class DecorationEditorWindow : GameWindow
     private int gridVAO, gridVBO;
     private const int GridSize = 1; // Only 1 block
 
-    private Vector3 selectedColor = new Vector3(0.3f, 0.7f, 0.2f); // Default grass color
+    private Color selectedColor = Color.GrassGreen; // Default grass color
     private bool mouseCaptured = false;
     private bool firstMove = true;
     private Vector2 lastMousePos;
@@ -372,7 +372,7 @@ void main()
             float z = miniVoxel.Position.Z * cellSize;
 
             // Create a small cube for each mini-voxel
-            AddCube(vertices, x, y, z, cellSize, miniVoxel.ColorVector);
+            AddCube(vertices, x, y, z, cellSize, miniVoxel.Color.ToVector3());
         }
 
         if (vertices.Count == 0)
@@ -491,10 +491,10 @@ void main()
         ImGui.Separator();
 
         // Color picker
-        System.Numerics.Vector3 colorPicker = new System.Numerics.Vector3(selectedColor.X, selectedColor.Y, selectedColor.Z);
+        System.Numerics.Vector3 colorPicker = new System.Numerics.Vector3(selectedColor.R, selectedColor.G, selectedColor.B);
         if (ImGui.ColorEdit3("Mini-Voxel Color", ref colorPicker))
         {
-            selectedColor = new Vector3(colorPicker.X, colorPicker.Y, colorPicker.Z);
+            selectedColor = new Color(colorPicker.X, colorPicker.Y, colorPicker.Z);
         }
 
         ImGui.Separator();

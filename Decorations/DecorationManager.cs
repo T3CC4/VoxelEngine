@@ -1,4 +1,3 @@
-using OpenTK.Mathematics;
 using VoxelEngine.Core;
 using VoxelEngine.World;
 
@@ -43,7 +42,7 @@ public class DecorationManager
         grass.AllowedBiomes.Add(BiomeType.Forest);
 
         // Create grass blades (simple cross pattern)
-        var grassColor = new Vector3(0.3f, 0.7f, 0.2f);
+        var grassColor = Color.GrassGreen;
         // Vertical blades
         for (int y = 0; y < 3; y++)
         {
@@ -63,12 +62,12 @@ public class DecorationManager
         flower.AllowedBiomes.Add(BiomeType.Forest);
 
         // Flower stem (green)
-        var stemColor = new Vector3(0.2f, 0.6f, 0.2f);
+        var stemColor = Color.DarkGreen;
         flower.AddMiniVoxel(new Vector3Int(2, 0, 2), stemColor);
         flower.AddMiniVoxel(new Vector3Int(2, 1, 2), stemColor);
 
         // Flower petals (red)
-        var petalColor = new Vector3(0.9f, 0.2f, 0.2f);
+        var petalColor = Color.Red;
         flower.AddMiniVoxel(new Vector3Int(2, 2, 2), petalColor); // Center
         flower.AddMiniVoxel(new Vector3Int(1, 2, 2), petalColor); // Left
         flower.AddMiniVoxel(new Vector3Int(3, 2, 2), petalColor); // Right
