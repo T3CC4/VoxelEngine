@@ -1,5 +1,6 @@
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
+using System.Reflection;
 
 namespace VoxelEngine.Graphics;
 
@@ -9,13 +10,13 @@ public class Shader : IDisposable
     private bool disposed = false;
 
     // =====================================================
-    // FILE-BASED SHADER (voxel.vert / voxel.frag)
+    // EMBEDDED RESOURCE SHADER LOADER
     // =====================================================
     public Shader(string vertexPath, string fragmentPath)
     {
-        // Load shader source
-        string vertexSource = File.ReadAllText(vertexPath);
-        string fragmentSource = File.ReadAllText(fragmentPath);
+        // Load shader source from embedded resources
+        string vertexSource = LoadEmbeddedResource(vertexPath);
+        string fragmentSource = LoadEmbeddedResource(fragmentPath);
 
         // Create and compile vertex shader
         int vertexShader = GL.CreateShader(ShaderType.VertexShader);
@@ -41,6 +42,31 @@ public class Shader : IDisposable
         GL.DetachShader(Handle, fragmentShader);
         GL.DeleteShader(vertexShader);
         GL.DeleteShader(fragmentShader);
+    }
+
+    private static string LoadEmbeddedResource(string resourcePath)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+
+        // Convert file path to resource name (e.g., "Shaders/voxel.vert" -> "VoxelEngine.Shaders.voxel.vert")
+        string resourceName = "VoxelEngine." + resourcePath.Replace("/", ".").Replace("\\", ".");
+
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream == null)
+        {
+            // Try to list available resources for debugging
+            var availableResources = assembly.GetManifestResourceNames();
+            Console.WriteLine($"ERROR: Could not find embedded resource: {resourceName}");
+            Console.WriteLine("Available resources:");
+            foreach (var res in availableResources)
+            {
+                Console.WriteLine($"  - {res}");
+            }
+            throw new FileNotFoundException($"Embedded resource not found: {resourceName}");
+        }
+
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     // =====================================================

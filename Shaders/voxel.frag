@@ -66,32 +66,48 @@ vec3 calculateLighting(vec3 normal, vec3 baseColor) {
     vec3 ambientColor = mix(vec3(0.1, 0.1, 0.2), vec3(0.5, 0.6, 0.7), sunIntensity);
     vec3 ambient = baseColor * ambientColor * ambientStrength;
 
-    // Improved shadow calculation
+    // Enhanced shadow calculation with sun-based directional shadows
     float shadow = 1.0;
 
     // Directional shadows based on sun
     if (sunIntensity > 0.1) {
         float facing = dot(normal, sunDir);
 
-        // Faces away from sun get strong shadows
-        if (facing < 0.0) {
-            shadow = 0.4;
+        // Strong directional shadow effect
+        // Faces away from sun (back faces) are dark
+        if (facing < -0.1) {
+            shadow = 0.3;  // Strong shadow for back faces
         }
-        // Faces perpendicular to sun get medium shadows
-        else if (facing < 0.5) {
-            shadow = mix(0.4, 0.8, facing * 2.0);
+        // Faces perpendicular to sun get graduated shadows
+        else if (facing < 0.3) {
+            shadow = mix(0.3, 0.6, (facing + 0.1) / 0.4);
         }
-        // Faces toward sun get soft shadows based on angle
+        // Faces angled toward sun
+        else if (facing < 0.7) {
+            shadow = mix(0.6, 0.9, (facing - 0.3) / 0.4);
+        }
+        // Faces directly facing sun are bright
         else {
-            shadow = mix(0.8, 1.0, (facing - 0.5) * 2.0);
+            shadow = mix(0.9, 1.0, (facing - 0.7) / 0.3);
         }
 
-        // Add subtle shadow variation based on normal direction
-        float verticalBias = abs(normal.y);
-        shadow = mix(shadow, shadow * 0.9, 1.0 - verticalBias);
+        // Top faces get extra brightness during day
+        if (normal.y > 0.9) {
+            shadow = mix(shadow, 1.0, 0.3);
+        }
+
+        // Bottom faces are always darker
+        if (normal.y < -0.9) {
+            shadow *= 0.5;
+        }
     } else {
         // Night time - everything is darker
-        shadow = 0.6 + moonIntensity * 0.3;
+        shadow = 0.5 + moonIntensity * 0.4;
+
+        // Top faces get moonlight
+        if (normal.y > 0.9 && moonIntensity > 0.1) {
+            shadow = mix(shadow, 0.9, moonIntensity * 0.5);
+        }
     }
 
     // Combine lighting
