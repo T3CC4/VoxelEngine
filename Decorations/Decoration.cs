@@ -11,11 +11,11 @@ namespace VoxelEngine.Decorations;
 ///
 /// MINIVOXEL SIZING SYSTEM:
 /// - Decorations are limited to exactly 1 block (1.0 world unit) in size
-/// - Resolution defines subdivision: Resolution=4 means 4x4x4 mini-voxels per block
-/// - Mini-voxel size = 1.0 / Resolution (e.g., 0.25 for Resolution=4)
+/// - Resolution defines subdivision: Resolution=16 means 16x16x16 mini-voxels per block
+/// - Mini-voxel size = 1.0 / Resolution (e.g., 0.0625 for Resolution=16)
 /// - Mini-voxel positions range from (0,0,0) to (Resolution-1, Resolution-1, Resolution-1)
 /// - World coordinates range from (0,0,0) to (1,1,1)
-/// - Common resolutions: 4 (coarse), 8 (medium), 16 (fine detail)
+/// - Common resolutions: 4 (coarse), 8 (medium), 16 (fine detail, default), 32 (very fine)
 /// - This ensures perfect alignment with the block grid
 /// </summary>
 public class Decoration
@@ -23,11 +23,11 @@ public class Decoration
     public string Name { get; set; } = "Unnamed";
 
     /// <summary>
-    /// Mini-voxel resolution (e.g., 4 means 4x4x4 mini-voxels per block).
+    /// Mini-voxel resolution (e.g., 16 means 16x16x16 mini-voxels per block).
     /// This determines how fine the decoration detail can be.
     /// Higher values allow more detail but increase memory/rendering cost.
     /// </summary>
-    public int Resolution { get; set; } = 4;
+    public int Resolution { get; set; } = 16;
 
     // List of mini-voxel positions and colors
     public List<MiniVoxelData> MiniVoxels { get; set; } = new();
@@ -48,7 +48,7 @@ public class Decoration
     {
     }
 
-    public Decoration(string name, int resolution = 4)
+    public Decoration(string name, int resolution = 16)
     {
         Name = name;
         Resolution = resolution;

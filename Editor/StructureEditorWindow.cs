@@ -225,13 +225,12 @@ void main()
             if (!isRotating)
             {
                 isRotating = true;
-                CursorState = CursorState.Grabbed;
+                lastMousePos = new Vector2(MouseState.X, MouseState.Y); // Reset to prevent jump
             }
         }
         else if (isRotating && !MouseState.IsButtonDown(MouseButton.Middle))
         {
             isRotating = false;
-            CursorState = CursorState.Normal;
         }
 
         // Shift + Middle mouse for panning
@@ -241,13 +240,12 @@ void main()
             {
                 isPanning = true;
                 isRotating = false;
-                CursorState = CursorState.Grabbed;
+                lastMousePos = new Vector2(MouseState.X, MouseState.Y); // Reset to prevent jump
             }
         }
         else if (isPanning && (!MouseState.IsButtonDown(MouseButton.Middle) || !keyboard.IsKeyDown(Keys.LeftShift)))
         {
             isPanning = false;
-            CursorState = CursorState.Normal;
         }
 
         // Mouse-based voxel placement (Blender-like)
