@@ -99,7 +99,7 @@ public class Camera
         }
     }
 
-    private void UpdateCameraVectors()
+    public void UpdateCameraVectors()
     {
         Vector3 front;
         front.X = MathF.Cos(MathHelper.DegreesToRadians(yaw)) * MathF.Cos(MathHelper.DegreesToRadians(pitch));

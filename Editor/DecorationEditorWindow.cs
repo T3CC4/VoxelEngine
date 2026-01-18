@@ -8,6 +8,7 @@ using VoxelEngine.Decorations;
 using VoxelEngine.World;
 using ImGuiNET;
 using VoxelEngine.Graphics;
+using MathHelper = OpenTK.Mathematics.MathHelper;
 
 namespace VoxelEngine.Editor;
 
@@ -291,7 +292,7 @@ void main()
         GL.EnableVertexAttribArray(3);
 
         // IsWater attribute
-        GL.VertexAttribIPointer(4, 1, VertexAttribIPointerType.Int, 11 * sizeof(float), (IntPtr)(10 * sizeof(float)));
+        GL.VertexAttribIPointer(4, 1, (VertexAttribIntegerType)VertexAttribIPointerType.Int, 11 * sizeof(float), (IntPtr)(10 * sizeof(float)));
         GL.EnableVertexAttribArray(4);
 
         GL.BindVertexArray(0);
@@ -318,7 +319,7 @@ void main()
         GL.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, 11 * sizeof(float), 9 * sizeof(float));
         GL.EnableVertexAttribArray(3);
 
-        GL.VertexAttribIPointer(4, 1, VertexAttribIPointerType.Int, 11 * sizeof(float), (IntPtr)(10 * sizeof(float)));
+        GL.VertexAttribIPointer(4, 1, (VertexAttribIntegerType)VertexAttribIPointerType.Int, 11 * sizeof(float), (IntPtr)(10 * sizeof(float)));
         GL.EnableVertexAttribArray(4);
 
         GL.BindVertexArray(0);
