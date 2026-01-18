@@ -41,7 +41,7 @@ public class DecorationEditorWindow : GameWindow
     private float orbitDistance = 3.0f;
 
     private string decorationName = "NewDecoration";
-    private int resolution = 4;
+    private int resolution = 16; // 16x16x16 grid for detailed mini-voxel decorations
     private float density = 0.3f;
     private bool[] biomesEnabled = new bool[5];
     private bool[] groundBlocksEnabled = new bool[9]; // For each solid VoxelType
@@ -61,7 +61,7 @@ public class DecorationEditorWindow : GameWindow
             Profile = ContextProfile.Core
         })
     {
-        currentDecoration = existingDecoration ?? new Decoration("NewDecoration", 4);
+        currentDecoration = existingDecoration ?? new Decoration("NewDecoration", 16);
         decorationName = currentDecoration.Name;
         resolution = currentDecoration.Resolution;
         density = currentDecoration.Density;
@@ -350,13 +350,12 @@ void main()
             if (!isRotating)
             {
                 isRotating = true;
-                CursorState = CursorState.Grabbed;
+                lastMousePos = new Vector2(MouseState.X, MouseState.Y); // Reset to prevent jump
             }
         }
         else if (isRotating && !MouseState.IsButtonDown(MouseButton.Middle))
         {
             isRotating = false;
-            CursorState = CursorState.Normal;
         }
 
         // Shift + Middle mouse for panning
@@ -366,13 +365,12 @@ void main()
             {
                 isPanning = true;
                 isRotating = false;
-                CursorState = CursorState.Grabbed;
+                lastMousePos = new Vector2(MouseState.X, MouseState.Y); // Reset to prevent jump
             }
         }
         else if (isPanning && (!MouseState.IsButtonDown(MouseButton.Middle) || !keyboard.IsKeyDown(Keys.LeftShift)))
         {
             isPanning = false;
-            CursorState = CursorState.Normal;
         }
 
         // Mouse-based mini-voxel placement (Blender-like)
