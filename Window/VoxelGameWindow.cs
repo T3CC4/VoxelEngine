@@ -678,9 +678,19 @@ public class VoxelGameWindow : GameWindow
                 });
             }
 
+            ImGui.Text("Infinite World Generator Settings:");
+            ImGui.Separator();
             ImGui.Text($"Seed: {worldGenConfig.Seed}");
-            ImGui.Text($"Water Level: {worldGenConfig.WaterLevel}");
             ImGui.Text($"Max Height: {worldGenConfig.MaxHeight}");
+            ImGui.Text($"Surface Level: {worldGenConfig.SurfaceLevel}");
+            ImGui.Text($"Water Level: {worldGenConfig.WaterLevel}");
+            ImGui.Separator();
+            ImGui.Text($"Height Variation: {worldGenConfig.HeightVariation:F1}");
+            ImGui.Text($"Noise Frequency: {worldGenConfig.NoiseFrequency:F4}");
+            ImGui.Text($"Noise Octaves: {worldGenConfig.NoiseOctaves}");
+            ImGui.Text($"Noise Persistence: {worldGenConfig.NoisePersistence:F2}");
+            ImGui.Separator();
+            ImGui.Text($"Structure Density: {worldGenConfig.StructureDensity * 100:F1}%");
         }
 
         // Day/Night Cycle
@@ -777,6 +787,14 @@ public class VoxelGameWindow : GameWindow
                 // Launch structure editor in new process
                 LaunchStructureEditor();
             }
+
+            ImGui.SameLine();
+
+            if (ImGui.Button("Open Decoration Editor"))
+            {
+                // Launch decoration editor in new process
+                LaunchDecorationEditor();
+            }
         }
 
         ImGui.Separator();
@@ -801,6 +819,17 @@ public class VoxelGameWindow : GameWindow
         };
         System.Diagnostics.Process.Start(psi);
         Console.WriteLine("Structure Editor launched as a new process");
+    }
+
+    private void LaunchDecorationEditor()
+    {
+        var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName;
+        var psi = new System.Diagnostics.ProcessStartInfo(exePath, "--decoration-editor")
+        {
+            UseShellExecute = true
+        };
+        System.Diagnostics.Process.Start(psi);
+        Console.WriteLine("Decoration Editor launched as a new process");
     }
 
     private void PlaceVoxel()
