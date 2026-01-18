@@ -22,6 +22,13 @@ class Program
                 return;
             }
 
+            if (args.Contains("--decoration-editor") && EDITOR_MODE)
+            {
+                using var editor = new DecorationEditorWindow();
+                editor.Run();
+                return;
+            }
+
             using var game = new VoxelGameWindow(EDITOR_MODE);
             game.Run();
         }
@@ -56,8 +63,13 @@ class Program
             Console.WriteLine("Editor Mode Features:");
             Console.WriteLine("  • 3D Voxel Editor with ImGui UI");
             Console.WriteLine("  • Structure System (Architecture & Ambient)");
+            Console.WriteLine("  • Decoration System (Grass & Flowers)");
             Console.WriteLine("  • Play Mode for testing");
-            Console.WriteLine("  • Save/Load structures");
+            Console.WriteLine("  • Save/Load structures and decorations");
+            Console.WriteLine();
+            Console.WriteLine("Launch Options:");
+            Console.WriteLine("  • --structure-editor: Launch Structure Editor");
+            Console.WriteLine("  • --decoration-editor: Launch Decoration Editor");
         }
         else
         {
