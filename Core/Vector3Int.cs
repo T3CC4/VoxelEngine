@@ -32,10 +32,10 @@ public struct Vector3Int : IEquatable<Vector3Int>
     public static bool operator !=(Vector3Int a, Vector3Int b) => !a.Equals(b);
 
     // Implicit conversion from OpenTK Vector3Int
-    public static implicit operator Vector3Int(OpenTK.Mathematics.Vector3Int v) => new(v.X, v.Y, v.Z);
+    public static implicit operator Vector3Int(OpenTK.Mathematics.Vector3i v) => new(v.X, v.Y, v.Z);
 
     // Implicit conversion to OpenTK Vector3Int
-    public static implicit operator OpenTK.Mathematics.Vector3Int(Vector3Int v) => new(v.X, v.Y, v.Z);
+    public static implicit operator OpenTK.Mathematics.Vector3i(Vector3Int v) => new(v.X, v.Y, v.Z);
 
     public int ManhattanDistance(Vector3Int other)
         => Math.Abs(X - other.X) + Math.Abs(Y - other.Y) + Math.Abs(Z - other.Z);

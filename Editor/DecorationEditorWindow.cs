@@ -7,6 +7,7 @@ using VoxelEngine.Core;
 using VoxelEngine.Decorations;
 using VoxelEngine.World;
 using ImGuiNET;
+using VoxelEngine.Graphics;
 
 namespace VoxelEngine.Editor;
 
