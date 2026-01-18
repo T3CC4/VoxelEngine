@@ -8,12 +8,25 @@ namespace VoxelEngine.Decorations;
 /// Represents a decoration like grass or flowers that uses mini-voxels
 /// within a single block. Mini-voxels are smaller than regular voxels
 /// to allow for more detailed decorations.
+///
+/// MINIVOXEL SIZING SYSTEM:
+/// - Decorations are limited to exactly 1 block (1.0 world unit) in size
+/// - Resolution defines subdivision: Resolution=4 means 4x4x4 mini-voxels per block
+/// - Mini-voxel size = 1.0 / Resolution (e.g., 0.25 for Resolution=4)
+/// - Mini-voxel positions range from (0,0,0) to (Resolution-1, Resolution-1, Resolution-1)
+/// - World coordinates range from (0,0,0) to (1,1,1)
+/// - Common resolutions: 4 (coarse), 8 (medium), 16 (fine detail)
+/// - This ensures perfect alignment with the block grid
 /// </summary>
 public class Decoration
 {
     public string Name { get; set; } = "Unnamed";
 
-    // Mini-voxel resolution (e.g., 4 means 4x4x4 mini-voxels per block)
+    /// <summary>
+    /// Mini-voxel resolution (e.g., 4 means 4x4x4 mini-voxels per block).
+    /// This determines how fine the decoration detail can be.
+    /// Higher values allow more detail but increase memory/rendering cost.
+    /// </summary>
     public int Resolution { get; set; } = 4;
 
     // List of mini-voxel positions and colors
