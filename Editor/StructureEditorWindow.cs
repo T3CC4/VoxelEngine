@@ -33,7 +33,7 @@ public class StructureEditorWindow : GameWindow
     private bool isRotating = false;
     private bool isPanning = false;
     private Vector3 focusPoint = Vector3.Zero; // Center at origin
-    private float orbitDistance = 30.0f;
+    private float orbitDistance = 15.0f;
 
     private string structureName = "NewStructure";
     private StructureCategory structureCategory = StructureCategory.Architecture;
@@ -81,6 +81,7 @@ public class StructureEditorWindow : GameWindow
         camera = new Camera(GetOrbitPosition(), Size.X / (float)Size.Y);
         camera.Pitch = -30;
         camera.Yaw = -45;
+        camera.UpdateCameraVectors(); // Apply pitch/yaw to camera direction
 
         // Load unlit shaders for editor
         voxelShader = new Shader("Shaders/voxel_unlit.vert", "Shaders/voxel_unlit.frag");
@@ -343,9 +344,9 @@ void main()
             return;
 
         // Blender-like zoom with scroll wheel
-        float zoomSpeed = 2.0f;
+        float zoomSpeed = 1.0f;
         orbitDistance -= e.OffsetY * zoomSpeed;
-        orbitDistance = Math.Clamp(orbitDistance, 5.0f, 100.0f);
+        orbitDistance = Math.Clamp(orbitDistance, 2.0f, 50.0f);
         camera.Position = GetOrbitPosition();
     }
 
