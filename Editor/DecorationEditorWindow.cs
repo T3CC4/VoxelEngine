@@ -92,10 +92,11 @@ public class DecorationEditorWindow : GameWindow
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
         // Initialize camera in orbit around decoration center
-        UpdateCameraOrbit();
-        camera = new Camera(GetOrbitPosition(), Size.X / (float)Size.Y);
+        camera = new Camera(Vector3.Zero, Size.X / (float)Size.Y);
         camera.Pitch = -30;
         camera.Yaw = -45;
+        camera.UpdateCameraVectors(); // Apply pitch/yaw to camera direction
+        camera.Position = GetOrbitPosition(); // Set orbit position after vectors are updated
 
         // Load unlit shader from shader system
         shader = new Shader("Shaders/voxel_unlit.vert", "Shaders/voxel_unlit.frag");
