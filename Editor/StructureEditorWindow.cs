@@ -8,6 +8,7 @@ using VoxelEngine.Graphics;
 using VoxelEngine.Structures;
 using VoxelEngine.World;
 using ImGuiNET;
+using MathHelper = OpenTK.Mathematics.MathHelper;
 
 namespace VoxelEngine.Editor;
 
@@ -21,12 +22,18 @@ public class StructureEditorWindow : GameWindow
     private ImGuiController? imguiController;
 
     private int gridVAO, gridVBO;
-    private const int GridSize = 32;
+    private const int GridSize = 100; // Large grid for infinite feel
 
     private VoxelType selectedVoxelType = VoxelType.Grass;
     private bool mouseCaptured = false;
     private bool firstMove = true;
     private Vector2 lastMousePos;
+
+    // Blender-like controls
+    private bool isRotating = false;
+    private bool isPanning = false;
+    private Vector3 focusPoint = Vector3.Zero; // Center at origin
+    private float orbitDistance = 30.0f;
 
     private string structureName = "NewStructure";
     private StructureCategory structureCategory = StructureCategory.Architecture;
@@ -70,9 +77,10 @@ public class StructureEditorWindow : GameWindow
         GL.Enable(EnableCap.CullFace);
         GL.CullFace(CullFaceMode.Back);
 
-        // Initialize camera
-        camera = new Camera(new Vector3(16, 16, 16), Size.X / (float)Size.Y);
+        // Initialize camera in orbit around origin
+        camera = new Camera(GetOrbitPosition(), Size.X / (float)Size.Y);
         camera.Pitch = -30;
+        camera.Yaw = -45;
 
         // Load unlit shaders for editor
         voxelShader = new Shader("Shaders/voxel_unlit.vert", "Shaders/voxel_unlit.frag");
@@ -141,16 +149,21 @@ void main()
     {
         List<float> vertices = new();
 
-        // Create grid lines
-        for (int i = 0; i <= GridSize; i++)
-        {
-            // Lines along X axis
-            vertices.Add(i); vertices.Add(0); vertices.Add(0);
-            vertices.Add(i); vertices.Add(0); vertices.Add(GridSize);
+        // Create grid centered at origin for infinite feel
+        int halfSize = GridSize / 2;
 
-            // Lines along Z axis
-            vertices.Add(0); vertices.Add(0); vertices.Add(i);
-            vertices.Add(GridSize); vertices.Add(0); vertices.Add(i);
+        // Lines along X axis (parallel to X)
+        for (int z = -halfSize; z <= halfSize; z++)
+        {
+            vertices.Add(-halfSize); vertices.Add(0); vertices.Add(z);
+            vertices.Add(halfSize); vertices.Add(0); vertices.Add(z);
+        }
+
+        // Lines along Z axis (parallel to Z)
+        for (int x = -halfSize; x <= halfSize; x++)
+        {
+            vertices.Add(x); vertices.Add(0); vertices.Add(-halfSize);
+            vertices.Add(x); vertices.Add(0); vertices.Add(halfSize);
         }
 
         gridVAO = GL.GenVertexArray();
@@ -164,6 +177,27 @@ void main()
         GL.EnableVertexAttribArray(0);
 
         GL.BindVertexArray(0);
+    }
+
+    private Vector3 GetOrbitPosition()
+    {
+        float radYaw = MathHelper.DegreesToRadians(camera?.Yaw ?? -45);
+        float radPitch = MathHelper.DegreesToRadians(camera?.Pitch ?? -30);
+
+        return focusPoint + new Vector3(
+            MathF.Cos(radPitch) * MathF.Cos(radYaw),
+            MathF.Sin(radPitch),
+            MathF.Cos(radPitch) * MathF.Sin(radYaw)
+        ) * orbitDistance;
+    }
+
+    private void UpdateCameraOrbit()
+    {
+        if (camera != null)
+        {
+            Vector3 direction = (focusPoint - camera.Position).Normalized();
+            camera.Position = focusPoint - direction * orbitDistance;
+        }
     }
 
     protected override void OnUpdateFrame(FrameEventArgs args)
@@ -183,8 +217,53 @@ void main()
             return;
         }
 
-        // Toggle mouse capture
-        if (MouseState.IsButtonPressed(MouseButton.Right) && !mouseCaptured)
+        // Blender-like controls
+        // Middle mouse button for rotation
+        if (MouseState.IsButtonDown(MouseButton.Middle) && !keyboard.IsKeyDown(Keys.LeftShift))
+        {
+            if (!isRotating)
+            {
+                isRotating = true;
+                CursorState = CursorState.Grabbed;
+            }
+        }
+        else if (isRotating && !MouseState.IsButtonDown(MouseButton.Middle))
+        {
+            isRotating = false;
+            CursorState = CursorState.Normal;
+        }
+
+        // Shift + Middle mouse for panning
+        if (MouseState.IsButtonDown(MouseButton.Middle) && keyboard.IsKeyDown(Keys.LeftShift))
+        {
+            if (!isPanning)
+            {
+                isPanning = true;
+                isRotating = false;
+                CursorState = CursorState.Grabbed;
+            }
+        }
+        else if (isPanning && (!MouseState.IsButtonDown(MouseButton.Middle) || !keyboard.IsKeyDown(Keys.LeftShift)))
+        {
+            isPanning = false;
+            CursorState = CursorState.Normal;
+        }
+
+        // Mouse-based voxel placement (Blender-like)
+        if (!isRotating && !isPanning && !mouseCaptured)
+        {
+            if (MouseState.IsButtonPressed(MouseButton.Left))
+            {
+                PlaceVoxel();
+            }
+            if (MouseState.IsButtonPressed(MouseButton.Right))
+            {
+                RemoveVoxel();
+            }
+        }
+
+        // Optional: Right click for traditional camera capture mode
+        if (keyboard.IsKeyDown(Keys.LeftControl) && MouseState.IsButtonPressed(MouseButton.Right) && !mouseCaptured)
         {
             CaptureMouse();
         }
@@ -193,7 +272,7 @@ void main()
             ReleaseMouse();
         }
 
-        // Camera movement
+        // Traditional camera movement with WASD (when mouse captured)
         if (mouseCaptured)
         {
             float speed = keyboard.IsKeyDown(Keys.LeftShift) ? 15.0f : 7.0f;
@@ -210,16 +289,6 @@ void main()
                 camera.ProcessKeyboard(CameraMovement.Up, deltaTime, speed);
             if (keyboard.IsKeyDown(Keys.LeftControl))
                 camera.ProcessKeyboard(CameraMovement.Down, deltaTime, speed);
-
-            // Voxel editing
-            if (MouseState.IsButtonPressed(MouseButton.Right))
-            {
-                PlaceVoxel();
-            }
-            if (MouseState.IsButtonPressed(MouseButton.Left))
-            {
-                RemoveVoxel();
-            }
         }
     }
 
@@ -234,14 +303,50 @@ void main()
             return;
         }
 
-        if (mouseCaptured)
+        float deltaX = e.X - lastMousePos.X;
+        float deltaY = e.Y - lastMousePos.Y;
+
+        // Blender-like orbit rotation with middle mouse
+        if (isRotating)
         {
-            float deltaX = e.X - lastMousePos.X;
-            float deltaY = e.Y - lastMousePos.Y;
+            camera.Yaw += deltaX * 0.3f;
+            camera.Pitch -= deltaY * 0.3f;
+            camera.Pitch = Math.Clamp(camera.Pitch, -89.0f, 89.0f);
+            camera.Position = GetOrbitPosition();
+            camera.UpdateCameraVectors();
+        }
+        // Blender-like panning with Shift + middle mouse
+        else if (isPanning)
+        {
+            float panSpeed = 0.01f * orbitDistance;
+            Vector3 right = camera.Right;
+            Vector3 up = camera.Up;
+            focusPoint -= right * deltaX * panSpeed;
+            focusPoint += up * deltaY * panSpeed;
+            camera.Position = GetOrbitPosition();
+        }
+        // Traditional FPS camera movement when captured
+        else if (mouseCaptured)
+        {
             camera.ProcessMouseMovement(deltaX, deltaY);
         }
 
         lastMousePos = new Vector2(e.X, e.Y);
+    }
+
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+
+        var io = ImGui.GetIO();
+        if (io.WantCaptureMouse)
+            return;
+
+        // Blender-like zoom with scroll wheel
+        float zoomSpeed = 2.0f;
+        orbitDistance -= e.OffsetY * zoomSpeed;
+        orbitDistance = Math.Clamp(orbitDistance, 5.0f, 100.0f);
+        camera.Position = GetOrbitPosition();
     }
 
     protected override void OnRenderFrame(FrameEventArgs args)
@@ -373,12 +478,17 @@ void main()
         }
 
         ImGui.Separator();
-        ImGui.Text("Controls:");
-        ImGui.BulletText("Right Click: Capture mouse");
-        ImGui.BulletText("Right Click (captured): Place voxel");
-        ImGui.BulletText("Left Click (captured): Remove voxel");
-        ImGui.BulletText("WASD: Move camera");
-        ImGui.BulletText("Space/Ctrl: Up/Down");
+        ImGui.Text("Blender-like Controls:");
+        ImGui.BulletText("Middle Mouse: Orbit camera");
+        ImGui.BulletText("Scroll Wheel: Zoom in/out");
+        ImGui.BulletText("Shift + Middle Mouse: Pan camera");
+        ImGui.BulletText("Left Click: Place voxel");
+        ImGui.BulletText("Right Click: Remove voxel");
+        ImGui.Separator();
+        ImGui.Text("Traditional Controls:");
+        ImGui.BulletText("Ctrl + Right Click: FPS mode");
+        ImGui.BulletText("WASD (FPS): Move camera");
+        ImGui.BulletText("Space/Ctrl (FPS): Up/Down");
         ImGui.BulletText("ESC: Release mouse");
 
         ImGui.End();

@@ -27,8 +27,7 @@ public class DecorationEditorWindow : GameWindow
     private int vao, vbo;
     private int gridVAO, gridVBO;
     private int blockVAO, blockVBO, blockEBO;
-    private const int InfiniteGridSize = 20; // Large grid for "infinite" feel
-    private const float GridFadeDistance = 15.0f;
+    private const int GridDivisions = 4; // Grid divisions per block (matches default resolution)
 
     private Color selectedColor = Color.GrassGreen; // Default grass color
     private bool mouseCaptured = false;
@@ -107,7 +106,7 @@ public class DecorationEditorWindow : GameWindow
         imguiController = new ImGuiController(this);
 
         // Create grid, voxel, and spawn block buffers
-        CreateInfiniteGrid();
+        CreateLimitedGrid();
         CreateMiniVoxelBuffer();
         CreateSpawnBlock();
 
@@ -176,26 +175,28 @@ void main()
         gridShader = new Shader(program);
     }
 
-    private void CreateInfiniteGrid()
+    private void CreateLimitedGrid()
     {
         List<float> vertices = new();
 
-        // Create a large grid centered at origin but extending far in all directions
-        // This creates an "infinite" feel like Blender
-        int halfSize = InfiniteGridSize / 2;
+        // Create a grid limited to 1x1 block area (0 to 1 in X and Z)
+        // This represents the area where decorations can be placed on top of the spawn block
+        float cellSize = 1.0f / resolution;
 
-        // Lines along X axis (parallel to X)
-        for (int z = -halfSize; z <= halfSize; z++)
+        // Lines parallel to X axis
+        for (int z = 0; z <= resolution; z++)
         {
-            vertices.Add(-halfSize); vertices.Add(0); vertices.Add(z);
-            vertices.Add(halfSize); vertices.Add(0); vertices.Add(z);
+            float zPos = z * cellSize;
+            vertices.Add(0); vertices.Add(0); vertices.Add(zPos);
+            vertices.Add(1); vertices.Add(0); vertices.Add(zPos);
         }
 
-        // Lines along Z axis (parallel to Z)
-        for (int x = -halfSize; x <= halfSize; x++)
+        // Lines parallel to Z axis
+        for (int x = 0; x <= resolution; x++)
         {
-            vertices.Add(x); vertices.Add(0); vertices.Add(-halfSize);
-            vertices.Add(x); vertices.Add(0); vertices.Add(halfSize);
+            float xPos = x * cellSize;
+            vertices.Add(xPos); vertices.Add(0); vertices.Add(0);
+            vertices.Add(xPos); vertices.Add(0); vertices.Add(1);
         }
 
         gridVAO = GL.GenVertexArray();
@@ -373,8 +374,21 @@ void main()
             CursorState = CursorState.Normal;
         }
 
-        // Right click for voxel placement (traditional mode)
-        if (MouseState.IsButtonPressed(MouseButton.Right) && !mouseCaptured)
+        // Mouse-based mini-voxel placement (Blender-like)
+        if (!isRotating && !isPanning && !mouseCaptured)
+        {
+            if (MouseState.IsButtonPressed(MouseButton.Left))
+            {
+                PlaceMiniVoxel();
+            }
+            if (MouseState.IsButtonPressed(MouseButton.Right))
+            {
+                RemoveMiniVoxel();
+            }
+        }
+
+        // Optional: Ctrl + Right click for traditional camera capture mode
+        if (keyboard.IsKeyDown(Keys.LeftControl) && MouseState.IsButtonPressed(MouseButton.Right) && !mouseCaptured)
         {
             CaptureMouse();
         }
@@ -400,16 +414,6 @@ void main()
                 camera.ProcessKeyboard(CameraMovement.Up, deltaTime, speed);
             if (keyboard.IsKeyDown(Keys.LeftControl))
                 camera.ProcessKeyboard(CameraMovement.Down, deltaTime, speed);
-
-            // Mini-voxel editing
-            if (MouseState.IsButtonPressed(MouseButton.Left))
-            {
-                PlaceMiniVoxel();
-            }
-            if (MouseState.IsButtonPressed(MouseButton.Right))
-            {
-                RemoveMiniVoxel();
-            }
         }
     }
 
@@ -488,17 +492,17 @@ void main()
             GL.BindVertexArray(0);
         }
 
-        // Render infinite grid
+        // Render limited grid (1x1 block area)
         if (gridShader != null)
         {
             GL.UseProgram(gridShader.Handle);
             GL.UniformMatrix4(GL.GetUniformLocation(gridShader.Handle, "view"), false, ref view);
             GL.UniformMatrix4(GL.GetUniformLocation(gridShader.Handle, "projection"), false, ref projection);
-            Vector4 gridColor = new Vector4(0.3f, 0.3f, 0.3f, 0.6f);
+            Vector4 gridColor = new Vector4(0.5f, 0.5f, 0.5f, 0.8f);
             GL.Uniform4(GL.GetUniformLocation(gridShader.Handle, "color"), gridColor);
 
             GL.BindVertexArray(gridVAO);
-            int lineCount = (InfiniteGridSize + 1) * 2; // Lines in both X and Z directions
+            int lineCount = (resolution + 1) * 2; // Lines in both X and Z directions
             GL.DrawArrays(PrimitiveType.Lines, 0, lineCount * 2);
             GL.BindVertexArray(0);
         }
@@ -708,11 +712,11 @@ void main()
         ImGui.BulletText("Middle Mouse: Orbit camera");
         ImGui.BulletText("Scroll Wheel: Zoom in/out");
         ImGui.BulletText("Shift + Middle Mouse: Pan camera");
+        ImGui.BulletText("Left Click: Place mini-voxel");
+        ImGui.BulletText("Right Click: Remove mini-voxel");
         ImGui.Separator();
         ImGui.Text("Traditional Controls:");
-        ImGui.BulletText("Right Click: Capture mouse (FPS mode)");
-        ImGui.BulletText("Left Click (FPS): Place mini-voxel");
-        ImGui.BulletText("Right Click (FPS): Remove mini-voxel");
+        ImGui.BulletText("Ctrl + Right Click: FPS mode");
         ImGui.BulletText("WASD (FPS): Move camera");
         ImGui.BulletText("ESC: Release mouse");
 
@@ -830,8 +834,8 @@ void main()
             groundBlocksEnabled[i] = currentDecoration.RequiredGroundBlocks.Contains(voxelType);
         }
 
-        // Recreate infinite grid (resolution doesn't affect infinite grid size)
-        CreateInfiniteGrid();
+        // Recreate grid with new resolution
+        CreateLimitedGrid();
 
         Console.WriteLine($"Loaded decoration '{currentDecoration.Name}'");
     }
