@@ -41,12 +41,16 @@ public class Decoration
         Resolution = resolution;
     }
 
-    public void AddMiniVoxel(Vector3Int localPosition, Vector3 color)
+    public void AddMiniVoxel(Vector3Int localPosition, Color color)
     {
         // Remove existing mini-voxel at this position if any
         MiniVoxels.RemoveAll(v => v.Position == localPosition);
 
-        MiniVoxels.Add(new MiniVoxelData { Position = localPosition, Color = color });
+        MiniVoxels.Add(new MiniVoxelData
+        {
+            Position = localPosition,
+            Color = color
+        });
     }
 
     public void RemoveMiniVoxel(Vector3Int localPosition)
@@ -110,5 +114,5 @@ public class Decoration
 public class MiniVoxelData
 {
     public Vector3Int Position { get; set; }
-    public Vector3 Color { get; set; }
+    public Color Color { get; set; }
 }
